@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="harz-stamp-route-planner/0.1.0" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Brocken-Runde (Beispiel)</name>
+    <desc>Beispieltour im Oberharz: sechs Stempelstellen rund um den Brocken. Erzeugt aus dem Stempelkatalog; die Wegpunkte sind echt, die Reihenfolge ist ein Vorschlag und keine geprüfte Route. Startpunkt ist nicht enthalten.</desc>
+  </metadata>
+  <wpt lat="51.8005385" lon="10.6157828">
+    <ele>1124.0</ele>
+    <name>HWN009 Brockenhaus</name>
+    <cmt>Brockenhaus</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.8026431" lon="10.6433484">
+    <ele>922.0</ele>
+    <name>HWN010 Große Zeterklippe</name>
+    <cmt>Große Zeterklippe</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.7849852" lon="10.6179225">
+    <ele>922.0</ele>
+    <name>HWN011 Eckerloch</name>
+    <cmt>Eckerloch</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.7614500" lon="10.5691333">
+    <ele>896.0</ele>
+    <name>HWN012 Achtermannshöhe</name>
+    <cmt>Achtermannshöhe</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.7910164" lon="10.6448051">
+    <ele>911.0</ele>
+    <name>HWN022 Gelber Brink</name>
+    <cmt>Gelber Brink</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.7735635" lon="10.6671864">
+    <ele>806.0</ele>
+    <name>HWN013 Ahrentsklint</name>
+    <cmt>Ahrentsklint</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+</gpx>

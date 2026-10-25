@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="harz-stamp-route-planner/0.1.0" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Ilsenburg und Ilsestein (Beispiel)</name>
+    <desc>Beispieltour im Nordharz mit Stempelstellen um Ilsenburg. Wegpunkte echt, Reihenfolge unverbindlich. Startpunkt ist nicht enthalten.</desc>
+  </metadata>
+  <wpt lat="51.8416490" lon="10.5799757">
+    <ele>555.0</ele>
+    <name>HWN001 Eckertalsperre</name>
+    <cmt>Eckertalsperre (Staumauer)</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.8301677" lon="10.6027742">
+    <ele>635.0</ele>
+    <name>HWN002 Scharfenstein</name>
+    <cmt>Scharfenstein (Rangerstation)</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.8441500" lon="10.6116100">
+    <ele>567.0</ele>
+    <name>HWN003 Am Kruzifix</name>
+    <cmt>Am Kruzifix (Schutzhütte)</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.8625580" lon="10.6181660">
+    <ele>555.0</ele>
+    <name>HWN004 Taubenklippe</name>
+    <cmt>Taubenklippe</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.8519155" lon="10.6545704">
+    <ele>523.0</ele>
+    <name>HWN005 Froschfelsen</name>
+    <cmt>Froschfelsen</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+  <wpt lat="51.8463368" lon="10.6631266">
+    <ele>444.0</ele>
+    <name>HWN030 Ilsestein</name>
+    <cmt>Ilsestein</cmt>
+    <sym>Flag, Blue</sym>
+  </wpt>
+</gpx>
