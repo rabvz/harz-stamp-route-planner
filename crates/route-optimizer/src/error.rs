@@ -47,14 +47,14 @@ pub enum OptimizerError {
     },
 }
 
-/// A constraint the plan could not satisfy.
+/// A constraint the tour could not satisfy.
 ///
 /// Warnings are part of the result rather than errors: dropping chosen stations
-/// silently would be worse, so the plan is returned and the problem is stated.
+/// silently would be worse, so the tour is returned and the problem is stated.
 ///
 /// `rename_all` renames the variant tags, `rename_all_fields` the payload
 /// fields. Both are camelCase because this enum crosses into JavaScript, where
-/// the rest of the plan payload is camelCase as well. Getting only one of them
+/// the rest of the tour payload is camelCase as well. Getting only one of them
 /// right produced a UI that showed "–" instead of a distance.
 #[derive(Debug, Clone, PartialEq, Error, Serialize, Deserialize)]
 #[serde(
@@ -63,28 +63,15 @@ pub enum OptimizerError {
     rename_all_fields = "camelCase"
 )]
 pub enum OptimizerWarning {
-    /// The plan needs more days than the user allowed.
-    #[error("plan needs {required} days but only {allowed} were allowed")]
-    DayLimitExceeded {
-        /// Days the plan actually uses.
-        required: usize,
-        /// Days the user allowed.
-        allowed: usize,
-    },
-
-    /// A single station cannot be reached within the daily distance limit.
-    #[error(
-        "day {day} is {distance_m:.0} m long, above the {limit_m:.0} m limit, \
-         because station {stamp} cannot be reached in a shorter round trip"
-    )]
-    OversizedDay {
-        /// One-based day number.
-        day: usize,
+    /// The tour is longer than the configured limit.
+    ///
+    /// It is still returned with every chosen station; the user can remove
+    /// stations or raise the limit.
+    #[error("the tour is {distance_m:.0} m long, above the {limit_m:.0} m limit")]
+    OversizedTour {
         /// Actual distance in metres.
         distance_m: f64,
         /// Configured limit in metres.
         limit_m: f64,
-        /// The station responsible.
-        stamp: stamp_core::StampId,
     },
 }
