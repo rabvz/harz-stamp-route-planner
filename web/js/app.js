@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //
-// Application wiring: catalogue -> selection -> parking -> plan -> GPX.
+// Application wiring: catalogue -> selection -> stamp pass -> parking -> day
+// tour -> editable track -> GPX.
 //
-// Everything is held in memory and mirrored to IndexedDB. The Rust core does
-// the geometry, optimisation and parking ranking; this module moves data across
-// the boundary, talks to the two public services (routing and Overpass) and
-// renders the result.
+// Everything is held in memory and mirrored to IndexedDB. The Rust core does the
+// geometry, optimisation and parking ranking; this module moves data across the
+// boundary, talks to the two public services (routing and Overpass) and renders
+// the result. The track nodes live here because editing them is an interaction
+// concern: the router accepts them as via points and the core never sees them.
 
 import { CONFIG } from "./config.js";
 import {
   downloadText,
   escapeHtml,
+  formatDistance,
   formatDuration,
   formatKm,
   timestampForFilename,
@@ -21,8 +24,10 @@ import {
   expandBounds,
   fetchParkingCandidates,
 } from "./overpass.js";
+import { renderElevationProfile } from "./profile.js";
 import { isRoutingEnabled, routingProviderName, routeWaypoints } from "./routing.js";
 import { STATE_VERSION, loadState, parseImport, saveState, serializeExport } from "./store.js";
+import { buildElevationProfile, nearestPointOnTrack, snapToTrack } from "./track.js";
 import { call, load as loadCore, PlannerError } from "./wasm.js";
 
 /** @type {ReturnType<typeof createMap> | null} */
@@ -36,21 +41,30 @@ const state = {
   stampsById: new Map(),
   /** @type {Set<number>} */
   selection: new Set(),
+  /** Stations already stamped in the paper pass. @type {Set<number>} */
+  stamped: new Set(),
+  onlyUnstamped: false,
   /** @type {{lat: number, lon: number} | null} */
   start: null,
   settings: {
-    maxDayKm: CONFIG.defaults.maxDayKm,
-    maxDays: CONFIG.defaults.maxDays,
+    maxTourKm: CONFIG.defaults.maxTourKm,
     maxWalkM: CONFIG.defaults.maxWalkM,
   },
+  /** The tour computed by the Rust core, or null. */
   plan: null,
-  /** @type {Map<number, Array<{lat: number, lon: number}>> | null} */
-  planGeometry: null,
+  /**
+   * The stops of the current tour in walking order: stamps visited and the
+   * waypoints the user added. @type {Array<{kind: "stamp", id: number} | {kind: "via", lat: number, lon: number}>}
+   */
+  stops: [],
+  /** Routed geometry, duration and elevation profile, or null. */
+  route: null,
   /** @type {Array<object>} */
   parkingSuggestions: [],
   clusters: null,
   filter: "",
-  /** Aborts an in-flight routing run when a new plan is requested. */
+  addingPoint: false,
+  /** Aborts an in-flight routing run when the tour is recomputed or edited. */
   routeController: null,
 };
 
@@ -64,6 +78,13 @@ const elements = {
   selectAll: document.querySelector("#select-all"),
   selectNone: document.querySelector("#select-none"),
   selectInvert: document.querySelector("#select-invert"),
+  stampedCount: document.querySelector("#stamped-count"),
+  stampedTotal: document.querySelector("#stamped-total"),
+  stampedBar: document.querySelector("#stamped-bar"),
+  stampProgress: document.querySelector("#stamp-progress"),
+  onlyUnstamped: document.querySelector("#only-unstamped"),
+  stampSelection: document.querySelector("#stamp-selection"),
+  unstampSelection: document.querySelector("#unstamp-selection"),
   findParking: document.querySelector("#find-parking"),
   parkingList: document.querySelector("#parking-list"),
   parkingStatus: document.querySelector("#parking-status"),
@@ -71,15 +92,21 @@ const elements = {
   useFirstStamp: document.querySelector("#use-first-stamp"),
   clearStart: document.querySelector("#clear-start"),
   startLabel: document.querySelector("#start-label"),
-  maxDayKm: document.querySelector("#max-day-km"),
-  maxDays: document.querySelector("#max-days"),
+  maxTourKm: document.querySelector("#max-tour-km"),
   plan: document.querySelector("#plan"),
   cluster: document.querySelector("#cluster"),
   planStatus: document.querySelector("#plan-status"),
   resultPanel: document.querySelector("#result-panel"),
   planSummary: document.querySelector("#plan-summary"),
   planWarnings: document.querySelector("#plan-warnings"),
-  dayList: document.querySelector("#day-list"),
+  tourStops: document.querySelector("#tour-stops"),
+  elevationPanel: document.querySelector("#elevation-panel"),
+  elevationChart: document.querySelector("#elevation-chart"),
+  elevationSummary: document.querySelector("#elevation-summary"),
+  trackPanel: document.querySelector("#track-panel"),
+  addPoint: document.querySelector("#add-point"),
+  resetTrack: document.querySelector("#reset-track"),
+  trackStatus: document.querySelector("#track-status"),
   clusterPanel: document.querySelector("#cluster-panel"),
   clusterList: document.querySelector("#cluster-list"),
   exportSelection: document.querySelector("#export-selection"),
@@ -110,6 +137,7 @@ function persist() {
     const ok = await saveState({
       version: STATE_VERSION,
       selection: [...state.selection].sort((a, b) => a - b),
+      stamped: [...state.stamped].sort((a, b) => a - b),
       start: state.start,
       settings: state.settings,
     });
@@ -131,29 +159,38 @@ function restore(saved) {
       }
     }
   }
+  if (Array.isArray(saved.stamped)) {
+    for (const id of saved.stamped) {
+      if (state.stampsById.has(id)) {
+        state.stamped.add(id);
+      }
+    }
+  }
   if (saved.start && Number.isFinite(saved.start.lat) && Number.isFinite(saved.start.lon)) {
     state.start = { lat: saved.start.lat, lon: saved.start.lon };
   }
-  if (saved.settings) {
-    if (Number.isFinite(saved.settings.maxDayKm)) {
-      state.settings.maxDayKm = saved.settings.maxDayKm;
-    }
-    if (Number.isFinite(saved.settings.maxDays)) {
-      state.settings.maxDays = saved.settings.maxDays;
-    }
-    if (Number.isFinite(saved.settings.maxWalkM)) {
-      state.settings.maxWalkM = saved.settings.maxWalkM;
-    }
+  const settings = saved.settings ?? {};
+  const maxTourKm = Number.isFinite(settings.maxTourKm)
+    ? settings.maxTourKm
+    : settings.maxDayKm; // state written before version 2
+  if (Number.isFinite(maxTourKm) && maxTourKm > 0) {
+    state.settings.maxTourKm = maxTourKm;
+  }
+  if (Number.isFinite(settings.maxWalkM)) {
+    state.settings.maxWalkM = settings.maxWalkM;
   }
 }
 
 /** The stamps matching the current search filter. */
 function filteredStamps() {
   const needle = state.filter.trim().toLowerCase();
-  if (!needle) {
-    return state.stamps;
-  }
   return state.stamps.filter((stamp) => {
+    if (state.onlyUnstamped && state.stamped.has(stamp.id)) {
+      return false;
+    }
+    if (!needle) {
+      return true;
+    }
     return (
       stamp.code.toLowerCase().includes(needle) ||
       stamp.name.toLowerCase().includes(needle) ||
@@ -169,6 +206,11 @@ function renderStampList() {
 
   for (const stamp of stamps) {
     const item = document.createElement("li");
+    item.className = "stamp-row";
+    if (state.stamped.has(stamp.id)) {
+      item.classList.add("stamp-row--stamped");
+    }
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "stamp-item";
@@ -183,7 +225,21 @@ function renderStampList() {
           : `${Math.round(stamp.elevationM)} m`
       }</span>`;
     button.title = stamp.location;
-    item.append(button);
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "stamp-toggle";
+    toggle.dataset.stampedId = String(stamp.id);
+    const isStamped = state.stamped.has(stamp.id);
+    toggle.setAttribute("aria-pressed", isStamped ? "true" : "false");
+    toggle.setAttribute(
+      "aria-label",
+      `${stamp.code} ${stamp.name} als ${isStamped ? "nicht gestempelt" : "gestempelt"} markieren`,
+    );
+    toggle.title = isStamped ? "Bereits gestempelt — Markierung entfernen" : "Als gestempelt markieren";
+    toggle.textContent = isStamped ? "✓" : "○";
+
+    item.append(button, toggle);
     fragment.append(item);
   }
 
@@ -191,8 +247,67 @@ function renderStampList() {
   if (stamps.length === 0) {
     const empty = document.createElement("li");
     empty.className = "hint";
-    empty.textContent = "Keine Stempelstelle passt zur Suche.";
+    empty.textContent = state.onlyUnstamped
+      ? "Alle passenden Stempelstellen sind bereits gestempelt."
+      : "Keine Stempelstelle passt zur Suche.";
     elements.stampList.append(empty);
+  }
+}
+
+/** Number of stamped stations that still exist in the catalogue. */
+function stampedCount() {
+  let count = 0;
+  for (const id of state.stamped) {
+    if (state.stampsById.has(id)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/** Updates the stamp pass counter and progress bar. */
+function updateStampPassUi() {
+  const total = state.stamps.length;
+  const count = stampedCount();
+  elements.stampedCount.textContent = String(count);
+  elements.stampedTotal.textContent = String(total);
+  elements.stampedBar.style.width = total > 0 ? `${(count / total) * 100}%` : "0%";
+  elements.stampProgress.setAttribute("aria-valuenow", String(count));
+  elements.stampProgress.setAttribute("aria-valuemax", String(total));
+  const hasSelection = state.selection.size > 0;
+  elements.stampSelection.disabled = !hasSelection;
+  elements.unstampSelection.disabled = !hasSelection;
+}
+
+/**
+ * Drops a tour that no longer matches the selection or the start point.
+ *
+ * Keeping a stale route visible after the user changed its inputs would be the
+ * kind of quiet lie this project avoids; the message says what to do instead.
+ * @param {string} message
+ */
+function invalidateTour(message) {
+  if (!state.plan) {
+    return;
+  }
+  state.routeController?.abort();
+  state.routeController = null;
+  state.plan = null;
+  state.route = null;
+  state.stops = [];
+  stopAddingPoints();
+  mapView?.clearPlan();
+  mapView?.clearTrackHandles();
+  elements.resultPanel.hidden = true;
+  elements.elevationPanel.hidden = true;
+  elements.trackPanel.hidden = true;
+  elements.planWarnings.replaceChildren();
+  elements.tourStops.replaceChildren();
+  elements.elevationChart.replaceChildren();
+  setStatus(elements.trackStatus, "");
+  elements.exportPlan.disabled = true;
+  if (message) {
+    setStatus(elements.planStatus, message);
   }
 }
 
@@ -207,9 +322,12 @@ function updateSelectionUi() {
   elements.exportSelection.disabled = count === 0;
   elements.exportPlan.disabled = state.plan === null;
   mapView?.setSelection(state.selection);
+  mapView?.setStamped(state.stamped);
+  updateStampPassUi();
+  updateTrackUi();
 }
 
-/** Toggles one station and re-renders the affected rows. */
+/** Toggles one station in the tour selection and re-renders the affected row. */
 function toggleStamp(id) {
   if (state.selection.has(id)) {
     state.selection.delete(id);
@@ -221,17 +339,58 @@ function toggleStamp(id) {
   if (button) {
     button.setAttribute("aria-pressed", pressed ? "true" : "false");
   }
+  invalidateTour("Auswahl geändert — bitte die Tagestour neu berechnen.");
+  updateSelectionUi();
+  persist();
+}
+
+/** Marks one station as already stamped in the paper pass. */
+function toggleStamped(id) {
+  const stamped = !state.stamped.has(id);
+  if (stamped) {
+    state.stamped.add(id);
+  } else {
+    state.stamped.delete(id);
+  }
+  const button = elements.stampList.querySelector(`[data-stamped-id="${id}"]`);
+  if (button) {
+    button.setAttribute("aria-pressed", stamped ? "true" : "false");
+    button.textContent = stamped ? "✓" : "○";
+    const stamp = state.stampsById.get(id);
+    if (stamp) {
+      button.setAttribute(
+        "aria-label",
+        `${stamp.code} ${stamp.name} als ${stamped ? "nicht gestempelt" : "gestempelt"} markieren`,
+      );
+      button.title = stamped
+        ? "Bereits gestempelt — Markierung entfernen"
+        : "Als gestempelt markieren";
+    }
+    button.closest(".stamp-row")?.classList.toggle("stamp-row--stamped", stamped);
+  }
+  if (state.onlyUnstamped) {
+    renderStampList();
+  }
   updateSelectionUi();
   persist();
 }
 
 /** Sets the start point shown on the map and in the summary. */
 function setStart(position, label) {
+  const previous = state.plan?.start;
   state.start = position;
   mapView?.setStart(position);
   elements.startLabel.textContent = position
     ? (label ?? `${position.lat.toFixed(5)}, ${position.lon.toFixed(5)}`)
     : "nicht gesetzt";
+  const moved =
+    previous &&
+    position &&
+    (Math.abs(previous.lat - position.lat) > 1e-7 ||
+      Math.abs(previous.lon - position.lon) > 1e-7);
+  if (moved || (previous && !position)) {
+    invalidateTour("Startpunkt geändert — bitte die Tagestour neu berechnen.");
+  }
   persist();
 }
 
@@ -309,7 +468,7 @@ function renderParking(suggestions) {
       }
       setStatus(
         elements.parkingStatus,
-        `Startpunkt: ${candidate.name}. Jetzt „Tour berechnen“ drücken.`,
+        `Startpunkt: ${candidate.name}. Jetzt „Tagestour berechnen“ drücken.`,
       );
     });
 
@@ -385,63 +544,336 @@ async function searchParking() {
 }
 
 // ---------------------------------------------------------------------------
-// Planning and routing
+// Planning, routing and track editing
 // ---------------------------------------------------------------------------
 
-/** Renders the computed plan. */
-function renderPlan(itinerary) {
-  const days = itinerary.days ?? [];
-  const estimated = itinerary.estimated !== false;
+/** The position of a tour stop. */
+function stopPosition(stop) {
+  if (!stop) {
+    return null;
+  }
+  if (stop.kind === "via") {
+    return { lat: stop.lat, lon: stop.lon };
+  }
+  const stamp = state.stampsById.get(stop.id);
+  return stamp ? { lat: stamp.lat, lon: stamp.lon } : null;
+}
+
+/** The editable waypoints in walk order. */
+function viaPoints() {
+  return state.stops.filter((stop) => stop.kind === "via");
+}
+
+/** All waypoints of the tour for the router: start, stops, start. */
+function tourWaypoints() {
+  const start = state.plan?.start ?? state.start;
+  const points = [{ lat: start.lat, lon: start.lon }];
+  for (const stop of state.stops) {
+    const position = stopPosition(stop);
+    if (position) {
+      points.push(position);
+    }
+  }
+  points.push({ lat: start.lat, lon: start.lon });
+  return points;
+}
+
+/** Warnings for the current distance. Replaces the estimated distance after routing. */
+function currentWarnings(distanceM) {
+  const limitM = state.settings.maxTourKm * 1000;
+  if (Number.isFinite(distanceM) && distanceM > limitM + 1) {
+    return [{ kind: "oversized_tour", distanceM, limitM }];
+  }
+  return [];
+}
+
+/** Renders the computed day tour. */
+function renderPlan() {
+  if (!state.plan) {
+    return;
+  }
+  const routed = Boolean(state.route && state.route.geometry.length >= 2);
+  const distanceM = state.route?.distanceM ?? state.plan.distanceM;
+  const durationS = state.route?.durationS ?? 0;
+  const profile = state.route?.profile ?? null;
 
   elements.resultPanel.hidden = false;
-  const totalDuration = days.reduce((sum, day) => sum + (day.durationS ?? 0), 0);
-  elements.planSummary.innerHTML =
-    `<div class="summary__item"><span class="summary__label">Tage</span>` +
-    `<span class="summary__value">${days.length}</span></div>` +
-    `<div class="summary__item"><span class="summary__label">Stempel</span>` +
-    `<span class="summary__value">${itinerary.stampsVisited.length}</span></div>` +
-    `<div class="summary__item"><span class="summary__label">Gesamt</span>` +
-    `<span class="summary__value">${formatKm(itinerary.totalDistanceM)}</span></div>` +
-    (totalDuration > 0
-      ? `<div class="summary__item"><span class="summary__label">Gehzeit</span>` +
-        `<span class="summary__value">${formatDuration(totalDuration)}</span></div>`
-      : "") +
-    `<div class="summary__item"><span class="summary__label">Distanzen</span>` +
-    `<span class="summary__value">${estimated ? "geschätzt" : "geroutet"}</span></div>`;
+  const summaryItems = [
+    ["Stempel", String(state.plan.stampsVisited.length)],
+    ["Strecke", formatKm(distanceM)],
+  ];
+  if (durationS > 0) {
+    summaryItems.push(["Gehzeit", formatDuration(durationS)]);
+  }
+  if (profile) {
+    summaryItems.push(["Aufstieg", formatDistance(profile.ascentM)]);
+    summaryItems.push(["Abstieg", formatDistance(profile.descentM)]);
+  }
+  summaryItems.push(["Distanzen", routed ? "geroutet" : "geschätzt"]);
+  elements.planSummary.innerHTML = summaryItems
+    .map(
+      ([label, value]) =>
+        `<div class="summary__item"><span class="summary__label">${label}</span>` +
+        `<span class="summary__value">${escapeHtml(value)}</span></div>`,
+    )
+    .join("");
 
   elements.planWarnings.replaceChildren();
-  for (const warning of itinerary.warnings ?? []) {
+  for (const warning of currentWarnings(distanceM)) {
     const box = document.createElement("p");
     box.className = "warning";
     box.textContent = describeWarning(warning);
     elements.planWarnings.append(box);
   }
 
-  elements.dayList.replaceChildren();
-  for (const day of days) {
-    const item = document.createElement("li");
-    item.className = `day-card${day.oversized ? " day-card--oversized" : ""}`;
+  renderTourStops();
 
-    const names = day.stamps
-      .map((id) => state.stampsById.get(id))
-      .filter(Boolean)
-      .map((stamp) => escapeHtml(stamp.code))
-      .join(", ");
-    const duration = day.durationS ? ` · ${formatDuration(day.durationS)}` : "";
-
-    item.innerHTML =
-      `<div class="day-card__head"><span>Tag ${day.day}</span>` +
-      `<span>${formatKm(day.distanceM)}${duration}</span></div>` +
-      `<p class="day-card__stamps">${names || "—"}</p>`;
-    elements.dayList.append(item);
+  if (profile) {
+    elements.elevationPanel.hidden = false;
+    renderElevationProfile(elements.elevationChart, profile);
+    elements.elevationSummary.textContent =
+      `Aufstieg ${formatDistance(profile.ascentM)} · Abstieg ${formatDistance(profile.descentM)} · ` +
+      `${Math.round(profile.minEleM)}–${Math.round(profile.maxEleM)} m · ` +
+      `Berechnet aus der Weggeometrie (${routingProviderName()}).`;
+  } else {
+    elements.elevationPanel.hidden = true;
+    elements.elevationChart.replaceChildren();
+    elements.elevationSummary.textContent = "";
   }
 
+  updateTrackUi();
+}
+
+/** Renders the walk order, including the editable waypoints. */
+function renderTourStops() {
+  const fragment = document.createDocumentFragment();
+  const startItem = document.createElement("li");
+  startItem.className = "tour-stops__fixed";
+  startItem.innerHTML = `<span class="tour-stops__index">Start</span><span>Parkplatz / Startpunkt</span>`;
+  fragment.append(startItem);
+
+  let viaNumber = 0;
+  state.stops.forEach((stop) => {
+    const item = document.createElement("li");
+    item.className = "tour-stops__item";
+    if (stop.kind === "via") {
+      viaNumber += 1;
+      const position = stopPosition(stop);
+      item.classList.add("tour-stops__item--via");
+      const label = document.createElement("span");
+      label.className = "tour-stops__label";
+      label.textContent = `Wegpunkt ${viaNumber} (${position.lat.toFixed(4)}, ${position.lon.toFixed(4)})`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "link-button";
+      remove.dataset.waypointIndex = String(viaNumber - 1);
+      remove.textContent = "entfernen";
+      remove.setAttribute("aria-label", `Wegpunkt ${viaNumber} entfernen`);
+      item.append(label, remove);
+    } else {
+      const stamp = state.stampsById.get(stop.id);
+      const code = document.createElement("span");
+      code.className = "tour-stops__code";
+      code.textContent = stamp?.code ?? `HWN${String(stop.id).padStart(3, "0")}`;
+      const label = document.createElement("span");
+      label.className = "tour-stops__label";
+      label.textContent = stamp?.name ?? "";
+      item.append(code, label);
+    }
+    fragment.append(item);
+  });
+
+  const endItem = document.createElement("li");
+  endItem.className = "tour-stops__fixed";
+  endItem.innerHTML = `<span class="tour-stops__index">Ziel</span><span>zurück zum Start</span>`;
+  fragment.append(endItem);
+
+  elements.tourStops.replaceChildren(fragment);
+}
+
+/** Draws the tour and the draggable waypoints on the map. */
+function renderMap({ fit = false } = {}) {
+  if (!mapView || !state.plan) {
+    return;
+  }
+  mapView.clearPlan();
+  const geometry = state.route?.geometry;
+  const routed = Boolean(geometry && geometry.length >= 2);
+  mapView.setPlan([
+    {
+      points: routed ? geometry : tourWaypoints(),
+      routed,
+    },
+  ]);
+  mapView.setTrackHandles(
+    viaPoints().map((stop) => ({ lat: stop.lat, lon: stop.lon })),
+    {
+      onMove: (index, position) => moveWaypoint(index, position),
+      onRemove: (index) => removeWaypoint(index),
+    },
+  );
+  if (fit) {
+    mapView.fitPlan();
+  }
+}
+
+/** Enables or disables the track controls for the current state. */
+function updateTrackUi() {
+  const hasPlan = state.plan !== null;
+  elements.trackPanel.hidden = !hasPlan;
+  const canEdit = hasPlan && isRoutingEnabled();
+  elements.addPoint.disabled = !canEdit;
+  elements.resetTrack.disabled = !hasPlan || viaPoints().length === 0;
+  if (hasPlan && !isRoutingEnabled() && !elements.trackStatus.textContent) {
+    setStatus(
+      elements.trackStatus,
+      "Ohne Routing-Dienst lassen sich keine Wegpunkte setzen oder verschieben.",
+      "warning",
+    );
+  }
+}
+
+/** Leaves "add point" mode and resets the button state. */
+function stopAddingPoints() {
+  state.addingPoint = false;
+  elements.addPoint.setAttribute("aria-pressed", "false");
+  mapView?.setAddPointMode(false);
+}
+
+/**
+ * Index in `state.stops` after which a new waypoint belongs.
+ *
+ * The clicked position is projected onto the current route; every existing
+ * stop is projected as well, so the new waypoint lands between the stops that
+ * surround it on the walked line.
+ */
+function insertionIndex(position) {
+  const geometry = state.route?.geometry;
+  if (!geometry || geometry.length < 2) {
+    return state.stops.length;
+  }
+  const hit = nearestPointOnTrack(geometry, position);
+  if (!hit) {
+    return state.stops.length;
+  }
+  let index = 0;
+  state.stops.forEach((stop, stopIndex) => {
+    const stopAt = stopPosition(stop);
+    const nearest = stopAt ? nearestPointOnTrack(geometry, stopAt) : null;
+    if (nearest && nearest.alongM <= hit.alongM + 1) {
+      index = stopIndex + 1;
+    }
+  });
+  return index;
+}
+
+/** Inserts a waypoint at a map position and reroutes. */
+function addWaypointAt(position) {
+  if (!state.plan) {
+    setStatus(elements.trackStatus, "Bitte zuerst eine Tagestour berechnen.", "error");
+    return;
+  }
+  if (!isRoutingEnabled()) {
+    setStatus(
+      elements.trackStatus,
+      "Track bearbeiten braucht den Routing-Dienst.",
+      "warning",
+    );
+    return;
+  }
+
+  let point = position;
+  const geometry = state.route?.geometry;
+  if (geometry && geometry.length >= 2) {
+    // Snap unconditionally onto the existing route: that is the trail the user
+    // sees, and it keeps the new node on a mapped path.
+    const nearest = nearestPointOnTrack(geometry, position);
+    if (nearest) {
+      point = { lat: nearest.lat, lon: nearest.lon };
+    }
+  }
+  const index = insertionIndex(point);
+  state.stops.splice(index, 0, { kind: "via", lat: point.lat, lon: point.lon });
+  renderPlan();
+  renderMap();
   setStatus(
-    elements.planStatus,
-    estimated
-      ? "Distanzen sind Luftlinien-Schätzungen. Der Routing-Dienst war nicht erreichbar."
-      : `Distanzen entlang der Wege von ${itinerary.providerName}.`,
-    estimated ? "warning" : "",
+    elements.trackStatus,
+    `Wegpunkt ${viaPoints().length} eingefügt. Route wird angepasst …`,
+  );
+  void routeTour({ fit: false, quiet: true });
+}
+
+/** Moves a waypoint that was dragged on the map. */
+function moveWaypoint(index, position) {
+  const via = viaPoints()[index];
+  if (!via) {
+    return;
+  }
+  const geometry = state.route?.geometry;
+  const snapped =
+    geometry && geometry.length >= 2
+      ? snapToTrack(geometry, position, CONFIG.track.snapRadiusM)
+      : { ...position, snapped: false };
+  via.lat = snapped.lat;
+  via.lon = snapped.lon;
+  renderPlan();
+  renderMap();
+  setStatus(
+    elements.trackStatus,
+    snapped.snapped
+      ? "Wegpunkt auf die Weggeometrie eingerastet. Route wird angepasst …"
+      : "Wegpunkt verschoben. Route wird angepasst …",
+  );
+  void routeTour({ fit: false, quiet: true });
+}
+
+/** Removes one editable waypoint. */
+function removeWaypoint(index) {
+  const via = viaPoints()[index];
+  if (!via) {
+    return;
+  }
+  const stopIndex = state.stops.indexOf(via);
+  if (stopIndex >= 0) {
+    state.stops.splice(stopIndex, 1);
+  }
+  renderPlan();
+  renderMap();
+  setStatus(elements.trackStatus, "Wegpunkt entfernt.");
+  if (isRoutingEnabled()) {
+    void routeTour({ fit: false, quiet: true });
+  }
+}
+
+/** Removes every added waypoint. */
+function resetTrack() {
+  state.stops = state.stops.filter((stop) => stop.kind !== "via");
+  stopAddingPoints();
+  renderPlan();
+  renderMap();
+  setStatus(elements.trackStatus, "Alle Wegpunkte entfernt.");
+  if (isRoutingEnabled()) {
+    void routeTour({ fit: false, quiet: true });
+  }
+}
+
+/** Toggles "click on the map to add a waypoint". */
+function toggleAddPoint() {
+  if (!state.plan) {
+    return;
+  }
+  if (!isRoutingEnabled()) {
+    setStatus(elements.trackStatus, "Track bearbeiten braucht den Routing-Dienst.", "warning");
+    return;
+  }
+  state.addingPoint = !state.addingPoint;
+  elements.addPoint.setAttribute("aria-pressed", state.addingPoint ? "true" : "false");
+  mapView?.setAddPointMode(state.addingPoint);
+  setStatus(
+    elements.trackStatus,
+    state.addingPoint
+      ? "In die Karte klicken, um einen Wegpunkt einzufügen. Mit Escape beenden."
+      : "",
   );
 }
 
@@ -450,50 +882,16 @@ function describeWarning(warning) {
   if (!warning || typeof warning !== "object") {
     return "Unbekannter Hinweis.";
   }
-  if (warning.kind === "day_limit_exceeded") {
-    return `Die Tour braucht ${warning.required} Tage, erlaubt waren ${warning.allowed}.`;
-  }
-  if (warning.kind === "oversized_day") {
+  if (warning.kind === "oversized_tour") {
     return (
-      `Tag ${warning.day} braucht ${formatKm(warning.distanceM)} statt höchstens ` +
-      `${formatKm(warning.limitM)} (Stempel ${warning.stamp}).`
+      `Die Tour ist ${formatKm(warning.distanceM)} lang, erlaubt sind höchstens ` +
+      `${formatKm(warning.limitM)}. Entferne Stempel aus der Auswahl oder erhöhe die maximale Strecke.`
     );
   }
   return JSON.stringify(warning);
 }
 
-/** Draws the plan on the map, using routed geometry when available. */
-function renderPlanGeometry(itinerary) {
-  if (!mapView) {
-    return;
-  }
-  mapView.clearPlan();
-  const start = itinerary.start;
-  const segments = [];
-
-  for (const day of itinerary.days ?? []) {
-    const routed = state.planGeometry?.get(day.day);
-    if (routed && routed.length >= 2) {
-      segments.push({ points: routed, day: day.day, routed: true });
-      continue;
-    }
-    const points = [{ lat: start.lat, lon: start.lon }];
-    for (const id of day.stamps) {
-      const stamp = state.stampsById.get(id);
-      if (stamp) {
-        points.push({ lat: stamp.lat, lon: stamp.lon });
-      }
-    }
-    points.push({ lat: start.lat, lon: start.lon });
-    segments.push({ points, day: day.day, routed: false });
-  }
-
-  mapView.setPlan(segments);
-  // After a plan is computed, show it: the previous view was the whole Harz.
-  mapView.fitPlan();
-}
-
-/** Computes a plan for the current selection and routes it. */
+/** Computes a day tour for the current selection and routes it. */
 async function computePlan() {
   const stamps = selectedStamps();
   if (stamps.length === 0) {
@@ -508,15 +906,15 @@ async function computePlan() {
 
   state.routeController?.abort();
   state.routeController = null;
+  stopAddingPoints();
   setStatus(elements.planStatus, "Berechne Reihenfolge …");
 
-  let itinerary;
+  let plan;
   try {
-    itinerary = call("plan", {
+    plan = call("plan", {
       stampIds: stamps.map((stamp) => stamp.id),
       start,
-      maxDayDistanceM: state.settings.maxDayKm * 1000,
-      maxDays: state.settings.maxDays,
+      maxTourDistanceM: state.settings.maxTourKm * 1000,
       providerName: "straight-line-estimate",
     });
   } catch (error) {
@@ -524,12 +922,14 @@ async function computePlan() {
     return;
   }
 
+  state.plan = plan;
+  state.stops = plan.stampsVisited.map((id) => ({ kind: "stamp", id }));
+  state.route = null;
+
   // Show the estimate immediately: the ordering is already useful, and the
   // routed distances replace it a few seconds later.
-  state.plan = itinerary;
-  state.planGeometry = null;
-  renderPlan(itinerary);
-  renderPlanGeometry(itinerary);
+  renderPlan();
+  renderMap({ fit: true });
   updateSelectionUi();
   elements.exportPlan.disabled = false;
 
@@ -542,142 +942,91 @@ async function computePlan() {
     return;
   }
 
-  await routePlan(itinerary, start);
+  await routeTour({ fit: true, quiet: false });
 }
 
 /**
- * Replaces estimated distances with real ones along hiking trails.
+ * Routes the current stops along real hiking trails.
  *
- * One request per day: BRouter accepts the whole day as a list of via points,
- * which keeps the load on the public instance low and gives a single contiguous
- * track for the map and the GPX export.
+ * One request covers the whole day tour: BRouter accepts the list of via
+ * points, which keeps the load on the public instance low and gives a single
+ * contiguous track for the map, the elevation profile and the GPX export.
  *
- * If a routed day exceeds the daily limit, the last station of that day is moved
- * to the next day and both days are routed again (at most two passes). This is
- * the one place where the plan is adjusted after the core computed it — the
- * alternative would be to show a plan that violates its own limit.
+ * @param {{fit?: boolean, quiet?: boolean}} [options]
  */
-async function routePlan(itinerary, start) {
-  const limit = state.settings.maxDayKm * 1000;
+async function routeTour(options = {}) {
+  if (!state.plan) {
+    return;
+  }
+  const points = tourWaypoints();
+  if (points.length < 2) {
+    return;
+  }
+
+  state.routeController?.abort();
   const controller = new AbortController();
   state.routeController = controller;
-
-  /** @type {Array<{day: number, stamps: number[], distanceM: number, durationS: number, geometry: any[], oversized: boolean}>} */
-  const days = (itinerary.days ?? []).map((day) => ({
-    day: day.day,
-    stamps: [...day.stamps],
-    distanceM: day.distanceM,
-    durationS: 0,
-    geometry: [],
-    oversized: false,
-  }));
-
-  const routeDay = async (day) => {
-    const points = [{ lat: start.lat, lon: start.lon }];
-    for (const id of day.stamps) {
-      const stamp = state.stampsById.get(id);
-      if (stamp) {
-        points.push({ lat: stamp.lat, lon: stamp.lon });
-      }
-    }
-    points.push({ lat: start.lat, lon: start.lon });
-
-    const result = await routeWaypoints(points, { signal: controller.signal });
-    day.distanceM = result.distanceM;
-    day.durationS = result.durationS;
-    day.geometry = result.points;
-    day.oversized = result.distanceM > limit + 1;
-  };
+  if (!options.quiet) {
+    setStatus(elements.planStatus, "Berechne Wegführung entlang der Wanderwege …");
+  }
 
   try {
-    for (let index = 0; index < days.length; index += 1) {
-      setStatus(elements.planStatus, `Route Tag ${index + 1} von ${days.length} …`);
-      await routeDay(days[index]);
-    }
-
-    // Real trail distances are often twice the straight-line estimate, so the
-    // day split computed from estimates is frequently too optimistic. Move the
-    // last station of an oversized day into the next one and route again,
-    // repeating until every multi-station day fits or no day can give a station
-    // away. Each pass costs two routing requests and they are cached.
-    for (let pass = 0; pass < 8; pass += 1) {
-      const index = days.findIndex((day) => day.oversized && day.stamps.length > 1);
-      if (index < 0) {
-        break;
-      }
-      const from = days[index];
-      const moved = from.stamps.pop();
-      let target = days[index + 1];
-      if (!target && days.length < state.settings.maxDays) {
-        target = {
-          day: days.length + 1,
-          stamps: [],
-          distanceM: 0,
-          durationS: 0,
-          geometry: [],
-          oversized: false,
-        };
-        days.push(target);
-      }
-      if (!target) {
-        from.stamps.push(moved);
-        break;
-      }
-      target.stamps.unshift(moved);
-      setStatus(elements.planStatus, "Passe Tagesgrenzen an die echten Wege an …");
-      await routeDay(from);
-      await routeDay(target);
-    }
-
-    const warnings = [];
-    for (const day of days) {
-      if (day.stamps.length > 0 && day.distanceM > limit + 1) {
-        warnings.push({
-          kind: "oversized_day",
-          day: day.day,
-          distanceM: day.distanceM,
-          limitM: limit,
-          stamp: day.stamps[0],
-        });
-      }
-    }
-    if (days.length > state.settings.maxDays) {
-      warnings.push({
-        kind: "day_limit_exceeded",
-        required: days.length,
-        allowed: state.settings.maxDays,
-      });
-    }
-
-    const routed = {
-      start,
-      estimated: false,
-      providerName: routingProviderName(),
-      days: days.map((day, index) => ({
-        day: index + 1,
-        stamps: day.stamps,
-        distanceM: day.distanceM,
-        durationS: day.durationS,
-        oversized: day.oversized,
-      })),
-      totalDistanceM: days.reduce((sum, day) => sum + day.distanceM, 0),
-      stampsVisited: days.flatMap((day) => day.stamps),
-      warnings,
-    };
-
-    state.planGeometry = new Map(days.map((day, index) => [index + 1, day.geometry]));
-    state.plan = routed;
-    renderPlan(routed);
-    renderPlanGeometry(routed);
-  } catch (error) {
-    if (error?.message?.includes("abgebrochen")) {
+    const result = await routeWaypoints(points, { signal: controller.signal });
+    if (controller.signal.aborted) {
       return;
     }
+    state.route = {
+      distanceM: result.distanceM,
+      durationS: result.durationS,
+      geometry: result.points,
+      profile: buildElevationProfile(result.points),
+    };
+    settleWaypoints();
+    renderPlan();
+    renderMap({ fit: options.fit ?? false });
     setStatus(
       elements.planStatus,
-      `${error.message} Die Tour bleibt als Schätzung stehen.`,
+      `Distanzen entlang der Wege von ${routingProviderName()}.`,
+    );
+  } catch (error) {
+    if (controller.signal.aborted || /abgebrochen/i.test(error?.message ?? "")) {
+      return;
+    }
+    // The old geometry no longer matches the edited stops, so fall back to the
+    // clearly marked straight-line estimate instead of showing a stale track.
+    state.route = null;
+    renderPlan();
+    renderMap({ fit: false });
+    setStatus(
+      elements.planStatus,
+      `${error.message} Die Tour wird als Schätzung angezeigt.`,
       "warning",
     );
+  } finally {
+    if (state.routeController === controller) {
+      state.routeController = null;
+    }
+  }
+}
+
+/**
+ * Settles newly routed waypoints onto the fresh geometry when they are close.
+ *
+ * A waypoint that was dragged onto a path was sent to the router as a point
+ * that may lie a few metres beside the resulting line. Snapping it back keeps
+ * the handle on the visible trail without changing the route.
+ */
+function settleWaypoints() {
+  const geometry = state.route?.geometry;
+  if (!geometry || geometry.length < 2) {
+    return;
+  }
+  for (const stop of viaPoints()) {
+    const nearest = nearestPointOnTrack(geometry, stop);
+    if (nearest && nearest.distanceM <= CONFIG.track.settleRadiusM) {
+      stop.lat = nearest.lat;
+      stop.lon = nearest.lon;
+    }
   }
 }
 
@@ -738,37 +1087,42 @@ async function exportSelection() {
   }
 }
 
-/** Exports the computed plan as GPX. */
+/** Exports the computed day tour as GPX, with elevation when routed. */
 async function exportPlan() {
   if (!state.plan) {
     return;
   }
-  const routed = state.planGeometry !== null;
+  const geometry = state.route?.geometry ?? [];
+  const routed = geometry.length >= 2;
   const trackPoints = routed
-    ? [...state.planGeometry.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .flatMap(([, points]) => points)
+    ? geometry.map((point) => ({
+        lat: point.lat,
+        lon: point.lon,
+        ...(Number.isFinite(point.ele) ? { ele: point.ele } : {}),
+      }))
     : undefined;
+  const stampCount = state.plan.stampsVisited.length;
 
   const description = routed
-    ? `Tour mit ${state.plan.days.length} Tagen entlang der Wege (${state.plan.providerName}).`
-    : `Tour mit ${state.plan.days.length} Tagen. Achtung: Die Distanzen sind Luftlinien-Schätzungen, ` +
-      `die Datei enthält daher keine Weggeometrie, sondern Wegpunkte in empfohlener Reihenfolge.`;
+    ? `Tagestour mit ${stampCount} Stempelstellen entlang der Wege (${routingProviderName()}).`
+    : `Tagestour mit ${stampCount} Stempelstellen. Achtung: Die Distanzen sind ` +
+      `Luftlinien-Schätzungen, die Datei enthält daher keine Weggeometrie, sondern ` +
+      `Wegpunkte in empfohlener Reihenfolge.`;
 
   try {
     const result = call("exportGpx", {
       stampIds: state.plan.stampsVisited,
-      name: `Harzer Wandernadel – Tour (${state.plan.days.length} Tage)`,
+      name: `Harzer Wandernadel – Tagestour (${stampCount} Stempel)`,
       description,
       trackPoints,
       includeTrack: routed,
     });
-    downloadText(`harzer-wandernadel-tour-${timestampForFilename()}.gpx`, result.gpx);
+    downloadText(`harzer-wandernadel-tagestour-${timestampForFilename()}.gpx`, result.gpx);
     setStatus(
       elements.gpxStatus,
       routed
-        ? `Tour mit ${result.waypointCount} Wegpunkten und ${result.trackPointCount} Trackpunkten exportiert.`
-        : `Tour mit ${result.waypointCount} Wegpunkten exportiert (ohne Weggeometrie, siehe Hinweis).`,
+        ? `Tagestour mit ${result.waypointCount} Wegpunkten und ${result.trackPointCount} Trackpunkten exportiert.`
+        : `Tagestour mit ${result.waypointCount} Wegpunkten exportiert (ohne Weggeometrie, siehe Hinweis).`,
       routed ? "" : "warning",
     );
   } catch (error) {
@@ -794,6 +1148,7 @@ async function importGpxFile(file) {
     for (const id of matched) {
       state.selection.add(id);
     }
+    invalidateTour("Auswahl geändert — bitte die Tagestour neu berechnen.");
     renderStampList();
     updateSelectionUi();
     persist();
@@ -823,6 +1178,11 @@ function bindEvents() {
   });
 
   elements.stampList.addEventListener("click", (event) => {
+    const stampedButton = event.target.closest("[data-stamped-id]");
+    if (stampedButton) {
+      toggleStamped(Number(stampedButton.dataset.stampedId));
+      return;
+    }
     const button = event.target.closest("[data-stamp-id]");
     if (!button) {
       return;
@@ -836,6 +1196,7 @@ function bindEvents() {
     for (const stamp of filteredStamps()) {
       state.selection.add(stamp.id);
     }
+    invalidateTour("Auswahl geändert — bitte die Tagestour neu berechnen.");
     renderStampList();
     updateSelectionUi();
     persist();
@@ -843,6 +1204,7 @@ function bindEvents() {
 
   elements.selectNone.addEventListener("click", () => {
     state.selection.clear();
+    invalidateTour("Auswahl geändert — bitte die Tagestour neu berechnen.");
     renderStampList();
     updateSelectionUi();
     persist();
@@ -855,6 +1217,30 @@ function bindEvents() {
       } else {
         state.selection.add(stamp.id);
       }
+    }
+    invalidateTour("Auswahl geändert — bitte die Tagestour neu berechnen.");
+    renderStampList();
+    updateSelectionUi();
+    persist();
+  });
+
+  elements.onlyUnstamped.addEventListener("change", () => {
+    state.onlyUnstamped = elements.onlyUnstamped.checked;
+    renderStampList();
+  });
+
+  elements.stampSelection.addEventListener("click", () => {
+    for (const id of state.selection) {
+      state.stamped.add(id);
+    }
+    renderStampList();
+    updateSelectionUi();
+    persist();
+  });
+
+  elements.unstampSelection.addEventListener("click", () => {
+    for (const id of state.selection) {
+      state.stamped.delete(id);
     }
     renderStampList();
     updateSelectionUi();
@@ -882,19 +1268,15 @@ function bindEvents() {
     }
   });
 
-  elements.maxDayKm.addEventListener("change", () => {
-    const value = Number(elements.maxDayKm.value);
+  elements.maxTourKm.addEventListener("change", () => {
+    const value = Number(elements.maxTourKm.value);
     if (Number.isFinite(value) && value > 0) {
-      state.settings.maxDayKm = value;
+      state.settings.maxTourKm = value;
       persist();
-    }
-  });
-
-  elements.maxDays.addEventListener("change", () => {
-    const value = Number(elements.maxDays.value);
-    if (Number.isFinite(value) && value > 0) {
-      state.settings.maxDays = value;
-      persist();
+      if (state.plan) {
+        // The limit only affects the warning, not the order.
+        renderPlan();
+      }
     }
   });
 
@@ -903,6 +1285,25 @@ function bindEvents() {
   });
 
   elements.cluster.addEventListener("click", () => computeClusters());
+
+  elements.addPoint.addEventListener("click", () => toggleAddPoint());
+
+  elements.resetTrack.addEventListener("click", () => resetTrack());
+
+  elements.tourStops.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-waypoint-index]");
+    if (!button) {
+      return;
+    }
+    removeWaypoint(Number(button.dataset.waypointIndex));
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.addingPoint) {
+      stopAddingPoints();
+      setStatus(elements.trackStatus, "");
+    }
+  });
 
   elements.exportSelection.addEventListener("click", () => {
     void exportSelection();
@@ -923,10 +1324,15 @@ function bindEvents() {
   elements.exportData.addEventListener("click", () => {
     const text = serializeExport({
       selection: [...state.selection].sort((a, b) => a - b),
+      stamped: [...state.stamped].sort((a, b) => a - b),
       start: state.start,
       settings: state.settings,
     });
-    downloadText(`harzer-wandernadel-daten-${timestampForFilename()}.json`, text, "application/json");
+    downloadText(
+      `harzer-wandernadel-daten-${timestampForFilename()}.json`,
+      text,
+      "application/json",
+    );
     setStatus(elements.dataStatus, "Daten exportiert.");
   });
 
@@ -940,11 +1346,12 @@ function bindEvents() {
     }
     try {
       const restored = parseImport(await file.text());
+      invalidateTour("");
       state.selection.clear();
+      state.stamped.clear();
       state.start = null;
       restore(restored);
-      elements.maxDayKm.value = String(state.settings.maxDayKm);
-      elements.maxDays.value = String(state.settings.maxDays);
+      elements.maxTourKm.value = String(state.settings.maxTourKm);
       mapView?.setStart(state.start);
       elements.startLabel.textContent = state.start
         ? `${state.start.lat.toFixed(5)}, ${state.start.lon.toFixed(5)}`
@@ -999,6 +1406,9 @@ async function main() {
         setStart(position);
         setStatus(elements.parkingStatus, "Startpunkt per Kartenklick gesetzt.");
       },
+      onAddPoint: (position) => addWaypointAt(position),
+      onWaypointMove: (index, position) => moveWaypoint(index, position),
+      onWaypointRemove: (index) => removeWaypoint(index),
     });
     mapView.setStamps(catalog.stamps);
     // Open on the Harz rather than on a fixed guess: the catalogue knows its
@@ -1006,9 +1416,9 @@ async function main() {
     mapView.fitAllStamps();
 
     restore(await loadState());
-    elements.maxDayKm.value = String(state.settings.maxDayKm);
-    elements.maxDays.value = String(state.settings.maxDays);
+    elements.maxTourKm.value = String(state.settings.maxTourKm);
     mapView.setStart(state.start);
+    mapView.setStamped(state.stamped);
     elements.startLabel.textContent = state.start
       ? `${state.start.lat.toFixed(5)}, ${state.start.lon.toFixed(5)}`
       : "nicht gesetzt";

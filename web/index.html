@@ -6,7 +6,7 @@
     <title>Harzer Wandernadel Tourenplaner</title>
     <meta
       name="description"
-      content="Plant Wandertouren zu den Stempelstellen der Harzer Wandernadel: Stempel auswählen, Tage einteilen, GPX exportieren. Läuft vollständig im Browser."
+      content="Plant Tagestouren zu den Stempelstellen der Harzer Wandernadel: Stempel auswählen, Stempelpass führen, Route entlang echter Wege berechnen und als GPX exportieren. Läuft vollständig im Browser."
     />
     <meta name="theme-color" content="#1f4d3a" />
     <link rel="manifest" href="manifest.webmanifest" />
@@ -21,7 +21,7 @@
       <div class="app-header__title">
         <h1>Harzer Wandernadel Tourenplaner</h1>
         <p class="app-header__subtitle">
-          Stempel auswählen, Tage einteilen, GPX exportieren — Berechnung lokal im Browser.
+          Tagestouren planen, Stempelpass führen, GPX exportieren — Berechnung lokal im Browser.
         </p>
       </div>
       <div class="app-header__meta">
@@ -52,9 +52,44 @@
           </div>
           <p class="selection-summary">
             <strong id="selection-count">0</strong> von
-            <strong id="catalog-count">222</strong> ausgewählt
+            <strong id="catalog-count">222</strong> für die Tour ausgewählt
           </p>
           <ul id="stamp-list" class="stamp-list" aria-label="Stempelstellen"></ul>
+        </section>
+
+        <section class="panel" id="stamp-pass-panel">
+          <h2>Stempelpass</h2>
+          <p class="selection-summary">
+            <strong id="stamped-count">0</strong> von
+            <strong id="stamped-total">222</strong> Stempelstellen bereits gestempelt
+          </p>
+          <div
+            class="progress"
+            id="stamp-progress"
+            role="progressbar"
+            aria-label="Fortschritt im Stempelpass"
+            aria-valuemin="0"
+            aria-valuemax="222"
+            aria-valuenow="0"
+          >
+            <div class="progress__bar" id="stamped-bar"></div>
+          </div>
+          <label class="checkbox">
+            <input type="checkbox" id="only-unstamped" />
+            <span>Nur ungestempelte Stempelstellen anzeigen</span>
+          </label>
+          <div class="row row--buttons">
+            <button type="button" id="stamp-selection" class="button button--secondary" disabled>
+              Auswahl als gestempelt
+            </button>
+            <button type="button" id="unstamp-selection" class="button button--secondary" disabled>
+              Auswahl zurücksetzen
+            </button>
+          </div>
+          <p class="hint">
+            Das Häkchen neben einer Stempelstelle markiert sie als bereits gestempelt. Der Stand
+            bleibt in diesem Browser gespeichert; Ziel sind alle 222 Stempel.
+          </p>
         </section>
 
         <section class="panel" id="parking-panel">
@@ -81,35 +116,60 @@
         </section>
 
         <section class="panel" id="plan-panel">
-          <h2>Tour planen</h2>
+          <h2>Tagestour planen</h2>
           <div class="row">
             <label class="field">
-              <span>Tagesstrecke (km)</span>
-              <input id="max-day-km" type="number" min="1" max="60" step="1" value="15" />
-            </label>
-            <label class="field">
-              <span>Maximale Tage</span>
-              <input id="max-days" type="number" min="1" max="60" step="1" value="7" />
+              <span>Maximale Strecke (km)</span>
+              <input id="max-tour-km" type="number" min="1" max="80" step="1" value="15" />
             </label>
           </div>
 
           <div class="row row--buttons">
             <button type="button" id="plan" class="button button--primary" disabled>
-              Tour berechnen
+              Tagestour berechnen
             </button>
             <button type="button" id="cluster" class="button button--secondary" disabled>
               Gruppen bilden
             </button>
           </div>
 
+          <p class="hint">
+            Eine Tagestour startet und endet am Startpunkt. Passt die Auswahl nicht in die
+            maximale Strecke, bleibt sie vollständig und wird als zu lang markiert.
+          </p>
           <p id="plan-status" class="status" role="status" aria-live="polite"></p>
         </section>
 
         <section class="panel" id="result-panel" hidden>
-          <h2>Ergebnis</h2>
+          <h2>Tagestour</h2>
           <div id="plan-summary" class="summary"></div>
           <div id="plan-warnings"></div>
-          <ol id="day-list" class="day-list"></ol>
+          <ol id="tour-stops" class="tour-stops" aria-label="Reihenfolge der Tour"></ol>
+        </section>
+
+        <section class="panel" id="elevation-panel" hidden>
+          <h2>Höhenprofil</h2>
+          <div id="elevation-chart" class="elevation-chart"></div>
+          <p id="elevation-summary" class="hint"></p>
+        </section>
+
+        <section class="panel" id="track-panel" hidden>
+          <h2>Track bearbeiten</h2>
+          <p class="hint">
+            „Punkt hinzufügen“ einschalten und in die Karte klicken, um einen Wegpunkt
+            einzufügen. Wegpunkte lassen sich auf der Karte ziehen und über ihr Menü oder die
+            Liste wieder entfernen. Beim Ziehen rastet ein Punkt auf der berechneten
+            Weggeometrie ein.
+          </p>
+          <div class="row row--buttons">
+            <button type="button" id="add-point" class="button" aria-pressed="false">
+              Punkt hinzufügen
+            </button>
+            <button type="button" id="reset-track" class="button button--secondary">
+              Punkte entfernen
+            </button>
+          </div>
+          <p id="track-status" class="status" role="status" aria-live="polite"></p>
         </section>
 
         <section class="panel" id="cluster-panel" hidden>
@@ -125,7 +185,7 @@
               Auswahl exportieren
             </button>
             <button type="button" id="export-plan" class="button" disabled>
-              Tour exportieren
+              Tagestour exportieren
             </button>
           </div>
           <div class="row">
@@ -140,7 +200,8 @@
         <section class="panel" id="data-panel">
           <h2>Eigene Daten</h2>
           <p class="hint">
-            Auswahl und Einstellungen liegen ausschließlich in diesem Browser (IndexedDB).
+            Auswahl, Stempelpass und Einstellungen liegen ausschließlich in diesem Browser
+            (IndexedDB).
           </p>
           <div class="row row--buttons">
             <button type="button" id="export-data" class="button">Daten sichern</button>

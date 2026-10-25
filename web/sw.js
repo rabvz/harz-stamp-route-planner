@@ -11,7 +11,7 @@
 
 // Bumped whenever the shell changes shape; the activate handler drops older
 // caches, so a new version also evicts stale files.
-const CACHE_NAME = "hsr-shell-v2";
+const CACHE_NAME = "hsr-shell-v3";
 
 const SHELL = [
   "./",
@@ -25,8 +25,10 @@ const SHELL = [
   "js/format.js",
   "js/mapview.js",
   "js/overpass.js",
+  "js/profile.js",
   "js/routing.js",
   "js/store.js",
+  "js/track.js",
   "js/wasm.js",
   "pkg/route_planner.wasm",
   "vendor/leaflet/leaflet.js",

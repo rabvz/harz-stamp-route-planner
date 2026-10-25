@@ -10,7 +10,36 @@ const STORE_NAME = "state";
 const STATE_KEY = "app-state";
 
 /** The persisted shape. Bump `version` when it changes incompatibly. */
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
+
+/**
+ * Brings a state written by an older version into the current shape.
+ *
+ * Version 1 had no stamp pass and a `maxDayKm`/`maxDays` pair from the
+ * multi-day planner. Old exports and old IndexedDB entries keep working: the
+ * single day limit is carried over and the day count is dropped.
+ * @param {object} state
+ * @returns {object}
+ */
+export function migrateState(state) {
+  if (!state || typeof state !== "object") {
+    return state;
+  }
+  const migrated = { ...state };
+  if (!Array.isArray(migrated.stamped)) {
+    migrated.stamped = [];
+  }
+  if (migrated.settings && typeof migrated.settings === "object") {
+    const settings = { ...migrated.settings };
+    if (!Number.isFinite(settings.maxTourKm) && Number.isFinite(settings.maxDayKm)) {
+      settings.maxTourKm = settings.maxDayKm;
+    }
+    delete settings.maxDayKm;
+    delete settings.maxDays;
+    migrated.settings = settings;
+  }
+  return migrated;
+}
 
 /** Opens the database, creating the object store on first use. */
 function openDatabase() {
@@ -51,7 +80,7 @@ async function withStore(mode, run) {
 export async function loadState() {
   try {
     const value = await withStore("readonly", (store) => store.get(STATE_KEY));
-    return value ?? null;
+    return value ? migrateState(value) : null;
   } catch {
     // A blocked or unavailable IndexedDB must not break the app; the planner
     // works fine without persistence.
@@ -120,7 +149,7 @@ export function parseImport(text) {
   if (parsed.application !== "harz-stamp-route-planner") {
     throw new Error("Die Datei stammt nicht von diesem Planer.");
   }
-  if (parsed.state_version !== STATE_VERSION) {
+  if (parsed.state_version !== 1 && parsed.state_version !== STATE_VERSION) {
     throw new Error(
       `Die Datei hat Version ${parsed.state_version}, dieser Planer erwartet ${STATE_VERSION}.`,
     );
@@ -129,5 +158,5 @@ export function parseImport(text) {
   if (!state || typeof state !== "object") {
     throw new Error("Der gespeicherte Zustand fehlt.");
   }
-  return state;
+  return migrateState(state);
 }
