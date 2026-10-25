@@ -1,0 +1,19 @@
+[package]
+name = "route-optimizer"
+description = "Builds multi-day stamp collecting tours with nearest-neighbour construction and 2-opt improvement"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+geo-engine = { workspace = true }
+routing-client = { workspace = true }
+stamp-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

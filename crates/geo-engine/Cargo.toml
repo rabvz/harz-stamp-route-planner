@@ -1,0 +1,19 @@
+[package]
+name = "geo-engine"
+description = "Deterministic geometry primitives (coordinates, distances, bounds, polylines) for the Harz stamp route planner"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

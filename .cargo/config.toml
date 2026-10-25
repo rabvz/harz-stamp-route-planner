@@ -1,0 +1,12 @@
+# Cargo aliases so that `cargo xtask <command>` works from anywhere in the
+# workspace. This file is committed; it only defines an alias and changes no
+# build behaviour.
+#
+# xtask is built into its own target directory. Several tasks invoke `cargo`
+# again (ci, test, clippy, wasm), and a nested build that targets the same
+# directory would try to replace the xtask executable while it is running,
+# which Windows refuses with "Zugriff verweigert". A separate directory for the
+# runner avoids that entirely and leaves `target/` for real build artefacts.
+
+[alias]
+xtask = "run --quiet --package xtask --target-dir target/xtask-runner --"

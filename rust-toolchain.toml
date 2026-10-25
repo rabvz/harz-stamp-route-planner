@@ -1,0 +1,7 @@
+[toolchain]
+# Pinned for reproducible local and CI builds. Bump deliberately, in its own PR,
+# together with any source changes that the new compiler requires.
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"

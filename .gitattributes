@@ -1,0 +1,34 @@
+# Line endings and binary handling.
+#
+# The project is developed on Windows and built on Linux CI. Normalising text to
+# LF in the repository keeps diffs stable and prevents `cargo fmt --check` from
+# failing on a checkout with different line endings.
+
+* text=auto eol=lf
+
+# Rust and web sources explicitly.
+*.rs    text eol=lf
+*.toml  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.svg   text eol=lf
+
+# Generated or binary artefacts.
+*.wasm  binary
+*.png   binary
+*.gpx   text eol=lf
+
+# The operator's published GPX file must stay byte-identical: PROVENANCE.json
+# records its SHA-256 and `cargo xtask data` refuses to run if the bytes changed.
+# Any line-ending normalisation here would silently break that guarantee, so the
+# directory is excluded from text conversion entirely.
+data/official/** -text
+
+# Vendored third-party code: keep as published, do not normalise.
+web/vendor/** -text

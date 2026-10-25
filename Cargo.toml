@@ -1,0 +1,68 @@
+# Workspace manifest for the Harz Stamp Route Planner.
+#
+# Crate layering is documented in docs/architecture.md and enforced by
+# `cargo xtask check-architecture`. Keep the dependency direction one-way:
+#
+#   geo-engine  <-  stamp-core, parking-search, gpx
+#   stamp-core  <-  stamp-clustering, route-optimizer
+#   geo-engine  <-  routing-client  <-  route-optimizer
+#   everything  <-  wasm-bindings
+#
+# wasm-bindings is the only crate that exposes a foreign ABI. Libraries never
+# depend on it, and never on the web frontend.
+
+[workspace]
+resolver = "3"
+members = [
+  "crates/geo-engine",
+  "crates/stamp-core",
+  "crates/parking-search",
+  "crates/stamp-clustering",
+  "crates/routing-client",
+  "crates/route-optimizer",
+  "crates/gpx",
+  "crates/wasm-bindings",
+  "xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/rabvz/harz-stamp-route-planner"
+homepage = "https://rabvz.github.io/harz-stamp-route-planner/"
+authors = ["The Harz Stamp Route Planner contributors"]
+keywords = ["hiking", "gpx", "wasm", "routing", "harz"]
+categories = ["science::geo"]
+
+[workspace.dependencies]
+# Internal crates carry both a path and a version. The path makes workspace
+# builds local; the version keeps `cargo deny` (and a future crates.io publish)
+# happy, because a path-only dependency is a wildcard requirement.
+geo-engine = { version = "0.1.0", path = "crates/geo-engine" }
+stamp-core = { version = "0.1.0", path = "crates/stamp-core" }
+parking-search = { version = "0.1.0", path = "crates/parking-search" }
+stamp-clustering = { version = "0.1.0", path = "crates/stamp-clustering" }
+routing-client = { version = "0.1.0", path = "crates/routing-client" }
+route-optimizer = { version = "0.1.0", path = "crates/route-optimizer" }
+gpx = { version = "0.1.0", path = "crates/gpx" }
+
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+quick-xml = "0.42.0"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+# Smaller, faster WASM payloads for the browser build.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true
+panic = "abort"

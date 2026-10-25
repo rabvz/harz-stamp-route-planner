@@ -1,0 +1,33 @@
+# Rust build output
+/target/
+**/target/
+
+# Cargo state that can appear inside the project directory when a tool is run
+# with a local CARGO_HOME. The tracked file here is `.cargo/config.toml` only.
+/.cargo/registry/
+/.cargo/.package-cache
+/.cargo/git/
+
+# Workspace-local Rust toolchain (installed by scripts/dev-env.ps1, never committed)
+/.toolchain/
+
+# Generated web artefacts
+/dist/
+/web/pkg/
+
+# Node (only used for optional local tooling)
+node_modules/
+package-lock.json
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local scratch files and secrets
+.env
+.env.*
+*.local
+/secrets/

@@ -1,0 +1,13 @@
+{
+  "dataset_id": "hwn-2025-04-23",
+  "dataset_name": "Harzer Wandernadel stamp stations 2025",
+  "source_url": "https://www.harzer-wandernadel.de/wp-content/uploads/2025/05/GPX-Daten-Stempelstellen-ZIP-Archiv-gepackt-Stand-23.04.2025.zip",
+  "source_archive": "GPX-Daten-Stempelstellen-ZIP-Archiv-gepackt-Stand-23.04.2025.zip",
+  "source_file": "data/official/HWN2025.gpx",
+  "source_sha256": "3e3667b13b8b7c69c25a95709cbc9f213d5be87f79f3fdcd921a64fade838bbc",
+  "released": "2025-04-23",
+  "retrieved": "2026-10-25",
+  "publisher": "Harzer Verkehrsverband e.V. / Harzer Wandernadel",
+  "rights_note": "See ATTRIBUTION.md. The station list is not covered by the project licence.",
+  "expected_station_count": 222
+}
