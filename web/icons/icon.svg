@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Harzer Wandernadel Tourenplaner">
+  <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+  <rect width="512" height="512" rx="96" fill="#1f4d3a" />
+  <!-- Stylised Harz ridge -->
+  <path d="M64 352 L176 208 L256 288 L336 176 L448 352 Z" fill="#2f7a52" />
+  <path d="M176 208 L214 256 L176 288 L140 256 Z" fill="#e6f2ea" opacity="0.9" />
+  <!-- Stamp mark -->
+  <circle cx="368" cy="176" r="52" fill="none" stroke="#fdf1dd" stroke-width="16" />
+  <path d="M344 176 L362 194 L394 158" fill="none" stroke="#fdf1dd" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Trail line -->
+  <path d="M96 400 C160 368 208 416 264 392 C320 368 352 408 416 384" fill="none" stroke="#e6f2ea" stroke-width="12" stroke-dasharray="28 22" stroke-linecap="round" />
+</svg>

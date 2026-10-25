@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Harzer Wandernadel Tourenplaner</title>
+    <meta
+      name="description"
+      content="Plant Wandertouren zu den Stempelstellen der Harzer Wandernadel: Stempel auswählen, Tage einteilen, GPX exportieren. Läuft vollständig im Browser."
+    />
+    <meta name="theme-color" content="#1f4d3a" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#sidebar">Zum Bedienfeld springen</a>
+
+    <header class="app-header">
+      <div class="app-header__title">
+        <h1>Harzer Wandernadel Tourenplaner</h1>
+        <p class="app-header__subtitle">
+          Stempel auswählen, Tage einteilen, GPX exportieren — Berechnung lokal im Browser.
+        </p>
+      </div>
+      <div class="app-header__meta">
+        <span id="catalog-badge" class="badge" aria-live="polite">Katalog wird geladen …</span>
+        <span id="engine-badge" class="badge badge--muted" aria-live="polite">Rechenkern: unbekannt</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside id="sidebar" class="sidebar" aria-label="Planung">
+        <section class="panel" id="selection-panel">
+          <h2>Stempelstellen</h2>
+          <div class="row">
+            <label class="field">
+              <span>Suche</span>
+              <input
+                id="search"
+                type="search"
+                placeholder="Name oder HWN-Nummer"
+                autocomplete="off"
+              />
+            </label>
+          </div>
+          <div class="row row--buttons">
+            <button type="button" id="select-all" class="button">Alle</button>
+            <button type="button" id="select-none" class="button">Keine</button>
+            <button type="button" id="select-invert" class="button">Umkehren</button>
+          </div>
+          <p class="selection-summary">
+            <strong id="selection-count">0</strong> von
+            <strong id="catalog-count">222</strong> ausgewählt
+          </p>
+          <ul id="stamp-list" class="stamp-list" aria-label="Stempelstellen"></ul>
+        </section>
+
+        <section class="panel" id="plan-panel">
+          <h2>Tour planen</h2>
+          <p class="hint">
+            Startpunkt in der Karte anklicken oder den ersten ausgewählten Stempel verwenden.
+          </p>
+          <div class="row row--buttons">
+            <button type="button" id="use-first-stamp" class="button button--secondary">
+              Erster Stempel als Start
+            </button>
+            <button type="button" id="clear-start" class="button button--secondary">
+              Start löschen
+            </button>
+          </div>
+          <p class="selection-summary">Start: <span id="start-label">nicht gesetzt</span></p>
+
+          <div class="row">
+            <label class="field">
+              <span>Tagesstrecke (km)</span>
+              <input id="max-day-km" type="number" min="1" max="60" step="1" value="15" />
+            </label>
+            <label class="field">
+              <span>Maximale Tage</span>
+              <input id="max-days" type="number" min="1" max="60" step="1" value="7" />
+            </label>
+          </div>
+
+          <div class="row row--buttons">
+            <button type="button" id="plan" class="button button--primary" disabled>
+              Tour berechnen
+            </button>
+            <button type="button" id="cluster" class="button button--secondary" disabled>
+              Gruppen bilden
+            </button>
+          </div>
+
+          <p id="plan-status" class="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="panel" id="result-panel" hidden>
+          <h2>Ergebnis</h2>
+          <div id="plan-summary" class="summary"></div>
+          <div id="plan-warnings"></div>
+          <ol id="day-list" class="day-list"></ol>
+        </section>
+
+        <section class="panel" id="cluster-panel" hidden>
+          <h2>Gruppen</h2>
+          <p class="hint">Räumlich zusammenhängende Stempel, geeignet als Tagestouren.</p>
+          <ul id="cluster-list" class="cluster-list"></ul>
+        </section>
+
+        <section class="panel" id="gpx-panel">
+          <h2>GPX</h2>
+          <div class="row row--buttons">
+            <button type="button" id="export-selection" class="button" disabled>
+              Auswahl exportieren
+            </button>
+            <button type="button" id="export-plan" class="button" disabled>
+              Tour exportieren
+            </button>
+          </div>
+          <div class="row">
+            <label class="field">
+              <span>GPX importieren</span>
+              <input id="import-gpx" type="file" accept=".gpx,application/gpx+xml" />
+            </label>
+          </div>
+          <p id="gpx-status" class="status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="panel" id="data-panel">
+          <h2>Eigene Daten</h2>
+          <p class="hint">
+            Auswahl und Einstellungen liegen ausschließlich in diesem Browser (IndexedDB).
+          </p>
+          <div class="row row--buttons">
+            <button type="button" id="export-data" class="button">Daten sichern</button>
+            <button type="button" id="import-data" class="button">Daten laden</button>
+            <input id="import-data-file" type="file" accept=".json,application/json" hidden />
+          </div>
+          <p id="data-status" class="status" role="status" aria-live="polite"></p>
+        </section>
+      </aside>
+
+      <div id="map" class="map" role="application" aria-label="Karte der Stempelstellen"></div>
+    </main>
+
+    <footer class="app-footer">
+      <p>
+        Stempeldaten: Harzer Verkehrsverband e.V. / Harzer Wandernadel (siehe
+        <a href="attribution.html">Attribution</a>). Kartenkacheln:
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer"
+          >© OpenStreetMap-Mitwirkende</a
+        >. Kartenbibliothek: Leaflet (BSD-2).
+      </p>
+      <p class="app-footer__legal">
+        Quellcode: <a href="https://github.com/rabvz/harz-stamp-route-planner">GitHub</a> ·
+        Lizenz: MIT OR Apache-2.0 ·
+        <a href="https://github.com/rabvz/harz-stamp-route-planner/blob/main/ATTRIBUTION.md"
+          >Drittanbieter-Hinweise</a
+        >
+      </p>
+    </footer>
+
+    <!-- Leaflet is vendored and loaded as a classic script so it exposes the
+         `L` global before the deferred application module runs. -->
+    <script src="vendor/leaflet/leaflet.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

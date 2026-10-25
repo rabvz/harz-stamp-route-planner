@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Harzer Wandernadel Tourenplaner">
+  <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+  <!-- Maskable variant: all artwork stays inside the safe zone (centre 80 %). -->
+  <rect width="512" height="512" fill="#1f4d3a" />
+  <path d="M104 344 L196 232 L264 296 L328 208 L408 344 Z" fill="#2f7a52" />
+  <path d="M196 232 L228 272 L196 298 L166 272 Z" fill="#e6f2ea" opacity="0.9" />
+  <circle cx="352" cy="204" r="42" fill="none" stroke="#fdf1dd" stroke-width="14" />
+  <path d="M332 204 L347 219 L374 189" fill="none" stroke="#fdf1dd" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M128 384 C184 358 224 398 272 378 C320 358 348 390 392 372" fill="none" stroke="#e6f2ea" stroke-width="10" stroke-dasharray="24 18" stroke-linecap="round" />
+</svg>

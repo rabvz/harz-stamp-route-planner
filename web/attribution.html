@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Attribution – Harzer Wandernadel Tourenplaner</title>
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <style>
+      /* SPDX-License-Identifier: MIT OR Apache-2.0 */
+      body {
+        margin: 0 auto;
+        max-width: 46rem;
+        padding: 2rem 1.25rem 4rem;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        line-height: 1.6;
+        color: #1b1f1c;
+        background: #f6f8f6;
+      }
+      h1 {
+        font-size: 1.5rem;
+        color: #1f4d3a;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin-top: 2rem;
+        color: #1f4d3a;
+        border-bottom: 1px solid #d8ded9;
+        padding-bottom: 0.25rem;
+      }
+      code {
+        background: #e6f2ea;
+        padding: 0.1rem 0.3rem;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.4rem 0.5rem;
+        border-bottom: 1px solid #d8ded9;
+        vertical-align: top;
+      }
+      a {
+        color: #1f4d3a;
+      }
+      .note {
+        background: #fdf1dd;
+        border-left: 4px solid #a9631b;
+        padding: 0.6rem 0.9rem;
+        border-radius: 4px;
+      }
+      footer {
+        margin-top: 3rem;
+        font-size: 0.85rem;
+        color: #5c6660;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Attribution und Nutzungsrechte</h1>
+    <p>
+      Diese Seite fasst zusammen, welche Daten und Bibliotheken die Anwendung verwendet und unter
+      welchen Bedingungen sie stehen. Maßgeblich ist die Datei
+      <a href="https://github.com/rabvz/harz-stamp-route-planner/blob/main/ATTRIBUTION.md"
+        >ATTRIBUTION.md</a
+      >
+      im Repository.
+    </p>
+
+    <h2>Anwendungsquellcode</h2>
+    <p>
+      Der Quellcode dieses Planers steht unter der Doppellizenz
+      <strong>MIT OR Apache-2.0</strong>. Sie dürfen ihn unter einer der beiden Lizenzen verwenden.
+      Die Lizenz gilt <em>nicht</em> automatisch für die unten genannten externen Daten.
+    </p>
+    <p>
+      <a href="LICENSE-MIT">LICENSE-MIT</a> ·
+      <a href="LICENSE-APACHE">LICENSE-APACHE</a>
+    </p>
+
+    <h2>Stempelstellen-Daten</h2>
+    <table>
+      <tr>
+        <th>Quelle</th>
+        <td>
+          Harzer Verkehrsverband e.V. / Harzer Wandernadel – amtliche GPX-Datei der Stempelstellen,
+          Stand 23.04.2025
+        </td>
+      </tr>
+      <tr>
+        <th>Bezugsadresse</th>
+        <td>
+          <a
+            href="https://www.harzer-wandernadel.de/wp-content/uploads/2025/05/GPX-Daten-Stempelstellen-ZIP-Archiv-gepackt-Stand-23.04.2025.zip"
+            rel="noopener noreferrer"
+            >harzer-wandernadel.de (GPX-Archiv)</a
+          >
+        </td>
+      </tr>
+      <tr>
+        <th>Umfang</th>
+        <td>222 Stempelstellen mit Koordinaten, Höhe, Name und Ortsangabe</td>
+      </tr>
+      <tr>
+        <th>Rechte</th>
+        <td>
+          Die Datei wird unverändert als Datenquelle verwendet. Eine eigenständige Lizenz zur
+          Weiterverbreitung des Stempelverzeichnisses ist mit dieser Veröffentlichung nicht
+          verbunden; die Rechte liegen beim Herausgeber.
+        </td>
+      </tr>
+    </table>
+    <p class="note">
+      „Harzer Wandernadel“ ist eine Bezeichnung des Harzer Verkehrsverbands. Dieses Projekt ist ein
+      unabhängiges Werkzeug und steht in keiner offiziellen Verbindung zu dem Verband. Namen und
+      Marken werden nur beschreibend verwendet.
+    </p>
+
+    <h2>Kartenkacheln</h2>
+    <p>
+      Die Hintergrundkarte wird zur Laufzeit von
+      <a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer"
+        >OpenStreetMap</a
+      >
+      geladen und steht unter der
+      <a href="https://opendatacommons.org/licenses/odbl/1-0/" rel="noopener noreferrer"
+        >Open Database License (ODbL) 1.0</a
+      >. Die Kacheln werden nicht im Repository gespeichert und nicht dauerhaft zwischengespeichert;
+      die Nutzung erfolgt im Rahmen der
+      <a href="https://operations.osmfoundation.org/policies/tiles/" rel="noopener noreferrer"
+        >Tile Usage Policy</a
+      >
+      der OpenStreetMap Foundation.
+    </p>
+    <p>
+      Ohne Internetverbindung bleibt der Kartenhintergrund leer. Planung, Stempelverwaltung und
+      GPX-Export funktionieren weiterhin, weil sie vollständig lokal berechnet werden.
+    </p>
+
+    <h2>Bibliotheken</h2>
+    <table>
+      <tr>
+        <th>Leaflet 1.9.4</th>
+        <td>BSD-2-Clause, © Volodymyr Agafonkin und Mitwirkende. Lokal eingebunden.</td>
+      </tr>
+      <tr>
+        <th>Rust-Crates</th>
+        <td>
+          <code>serde</code>, <code>serde_json</code>, <code>quick-xml</code>,
+          <code>thiserror</code>, <code>sha2</code> – überwiegend MIT oder Apache-2.0. Eine
+          vollständige Liste mit Versionen und Lizenzen erzeugt
+          <code>cargo xtask check-licenses</code> beziehungsweise <code>cargo deny</code>.
+        </td>
+      </tr>
+    </table>
+
+    <h2>Zum Seitenanfang</h2>
+    <p>
+      Die Anwendung erhebt keine Telemetrie. Es werden nur Daten an Dritte übertragen, die für die
+      Anzeige der Karte nötig sind: Anfragen an den Kachel-Server. Ein optionaler Routing-Dienst
+      wird ausschließlich dann kontaktiert, wenn er in der Konfiguration eingetragen wurde und eine
+      Tour berechnet wird.
+    </p>
+
+    <footer>
+      <p>
+        <a href="./">Zurück zum Planer</a> ·
+        <a href="https://github.com/rabvz/harz-stamp-route-planner">Quellcode auf GitHub</a>
+      </p>
+    </footer>
+  </body>
+</html>
