@@ -483,6 +483,71 @@ try {
       JSON.stringify(added),
     );
 
+    // Wait for the fresh route before dragging: a route response must not move
+    // the handle while the drag is in progress.
+    await poll(
+      devtools,
+      "document.querySelector('#plan-status')?.textContent ?? ''",
+      (value) => value.includes("Distanzen entlang"),
+      30000,
+    );
+
+    const beforeDrag = await devtools.evaluate(
+      "document.querySelector('.tour-stops__item--via .tour-stops__label')?.textContent ?? ''",
+    );
+    const handle = await devtools.evaluate(`
+      (() => {
+        const el = document.querySelector('.track-handle');
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()
+    `);
+    check("the waypoint handle is placed on the map", handle !== null, JSON.stringify(handle));
+    if (handle) {
+      // Trusted input events, unlike a synthetic PointerEvent: Leaflet's drag
+      // implementation only follows real pointer input.
+      await devtools.send("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x: handle.x,
+        y: handle.y,
+        button: "left",
+        buttons: 1,
+        clickCount: 1,
+      });
+      await devtools.send("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: handle.x + 80,
+        y: handle.y + 60,
+        button: "left",
+        buttons: 1,
+      });
+      await devtools.send("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x: handle.x + 80,
+        y: handle.y + 60,
+        button: "left",
+        buttons: 0,
+        clickCount: 1,
+      });
+    }
+    const dragged = await poll(
+      devtools,
+      `(() => ({
+        label: document.querySelector('.tour-stops__item--via .tour-stops__label')?.textContent ?? '',
+        status: document.querySelector('#track-status')?.textContent ?? '',
+        handles: document.querySelectorAll('.track-handle').length,
+      }))()`,
+      (value) =>
+        value.label !== beforeDrag || /verschoben|eingerastet/i.test(value.status),
+      30000,
+    );
+    check(
+      "dragging a waypoint moves it and keeps the handle",
+      dragged.label !== beforeDrag && dragged.handles === 1,
+      JSON.stringify({ beforeDrag, dragged }),
+    );
+
     await devtools.evaluate("document.querySelector('[data-waypoint-index]').click()");
     const removed = await poll(
       devtools,

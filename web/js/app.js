@@ -816,8 +816,10 @@ function moveWaypoint(index, position) {
       : { ...position, snapped: false };
   via.lat = snapped.lat;
   via.lon = snapped.lon;
+  // The dragged marker already sits at the dropped position. Rebuilding the
+  // handles here would remove the marker while Leaflet is still finishing the
+  // drag, so the map is redrawn after the route request instead.
   renderPlan();
-  renderMap();
   setStatus(
     elements.trackStatus,
     snapped.snapped

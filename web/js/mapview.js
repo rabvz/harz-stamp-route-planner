@@ -49,6 +49,8 @@ export function createMap(element, handlers) {
 
   /** @type {Map<number, L.CircleMarker>} */
   const markers = new Map();
+  /** @type {L.Marker[]} */
+  let handleMarkers = [];
   /** @type {{lat: number, lon: number} | null} */
   let start = null;
   /** @type {Set<number>} */
@@ -219,7 +221,19 @@ export function createMap(element, handlers) {
    * @param {{onMove?: (index: number, position: {lat: number, lon: number}) => void, onRemove?: (index: number) => void}} callbacks
    */
   function setTrackHandles(positions, callbacks = {}) {
+    // Re-rendering the tour used to rebuild every handle. Doing that while a
+    // handle was being dragged removed the marker under the pointer and
+    // silently cancelled the drag, so an unchanged number of waypoints only
+    // moves the existing markers.
+    if (handleMarkers.length === positions.length) {
+      positions.forEach((position, index) => {
+        handleMarkers[index].setLatLng([position.lat, position.lon]);
+      });
+      return;
+    }
+
     handleLayer.clearLayers();
+    handleMarkers = [];
     positions.forEach((position, index) => {
       const icon = L.divIcon({
         className: "track-handle",
@@ -257,6 +271,7 @@ export function createMap(element, handlers) {
         return wrapper;
       });
       marker.addTo(handleLayer);
+      handleMarkers.push(marker);
     });
   }
 
@@ -277,6 +292,7 @@ export function createMap(element, handlers) {
   /** Removes the draggable waypoint handles from the map. */
   function clearTrackHandles() {
     handleLayer.clearLayers();
+    handleMarkers = [];
   }
 
   /** Fits the view to the drawn plan, if there is one. */

@@ -56,7 +56,7 @@ Legende: **fertig** 쨌 **eingeschr채nkt** (funktioniert, mit benannter L체cke) �
 | Architekturpr체fung | fertig | `xtask/src/checks.rs` |
 | Lizenzpr체fung (SPDX) | fertig | dito |
 | Datensatz-Driftpr체fung | fertig | `cargo xtask data --check` |
-| Browsertest | fertig | `scripts/smoke-test.mjs`, 47 Pr체fungen (mit `EXPECT_NETWORK=1` streng) |
+| Browsertest | fertig | `scripts/smoke-test.mjs`, 49 Pr체fungen (mit `EXPECT_NETWORK=1` streng) |
 | CI-Workflows | fertig | `.github/workflows/` |
 | Sicherheitspr체fung (`cargo audit`, `cargo deny`) | fertig | `security.yml` |
 | Secret Scanning, Push Protection, Dependabot | fertig | im Repository aktiviert |
