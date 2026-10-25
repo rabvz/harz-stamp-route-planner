@@ -113,16 +113,16 @@ pub fn build_web() -> Result<PathBuf, String> {
 }
 
 /// Serves `dist/` for manual testing.
-pub fn serve() -> Result<(), String> {
+pub fn serve(port: u16) -> Result<(), String> {
     let root = workspace_root();
     let directory = root.join("dist");
     if !directory.is_dir() {
         return Err("dist/ does not exist; run `cargo xtask web` first".to_string());
     }
 
-    let address = "127.0.0.1:8080";
-    let listener =
-        TcpListener::bind(address).map_err(|error| format!("could not bind {address}: {error}"))?;
+    let address = format!("127.0.0.1:{port}");
+    let listener = TcpListener::bind(&address)
+        .map_err(|error| format!("could not bind {address}: {error}"))?;
     println!("serving {} on http://{address}/", directory.display());
     println!("press Ctrl+C to stop");
 

@@ -69,7 +69,7 @@ fn main() -> ExitCode {
         "check-licenses" => checks::check_licenses(),
         "check-gpx" => checks::check_gpx(),
         "check-secrets" => checks::check_secrets(),
-        "serve" => assets::serve(),
+        "serve" => assets::serve(port_from_flags(&flags)),
         "help" | "--help" | "-h" => {
             print_help();
             Ok(())
@@ -109,6 +109,20 @@ fn run_ci() -> Result<(), String> {
 fn step(name: &str, run: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
     println!("\n=== {name} ===");
     run()
+}
+
+/// Reads `--port <n>` from the flags, defaulting to 8080.
+///
+/// The port is configurable because 8080 is a popular port; a local preview
+/// that refuses to start because something else holds it is an unnecessary
+/// obstacle. Our own test run hit exactly that.
+fn port_from_flags(flags: &[String]) -> u16 {
+    flags
+        .iter()
+        .position(|flag| flag == "--port")
+        .and_then(|index| flags.get(index + 1))
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(8080)
 }
 
 fn run_fmt(check: bool) -> Result<(), String> {
@@ -158,7 +172,7 @@ Commands:
   check-licenses      enforce SPDX headers and licence metadata
   check-gpx           round-trip and fixture checks for GPX
   check-secrets       scan the tree for committed credentials
-  serve               serve dist/ on http://127.0.0.1:8080
+  serve [--port N]    serve dist/ (default http://127.0.0.1:8080)
   help                show this table"
     );
 }

@@ -72,6 +72,20 @@ gekennzeichnet; die Grenzen stehen in `README.md` und
 - **GitHub-Community-Dateien**: Issue-Vorlagen für Fehler, Funktionswünsche,
   Datenfehler und Routingprobleme, Pull-Request-Vorlage, Dependabot.
 
+### Behoben
+
+- **Parkplatzsuche bei Überlastung von Overpass.** Der öffentliche Dienst
+  antwortet bei ausgelastetem Backend innerhalb von Sekunden mit HTTP 502/504.
+  Das wurde als „Parkplatzsuche fehlgeschlagen (HTTP 502)“ angezeigt — ohne
+  Hinweis, dass es vorübergehend ist. Jetzt werden 5xx wie Auslastung behandelt:
+  bis zu drei Versuche mit Pause, danach eine Meldung, die zum erneuten Klick
+  auffordert. Verifiziert mit erzwungenem 502 (Meldung nach 4,1 s, Knopf wieder
+  aktiv).
+- **Veraltete Dateien nach einem Deployment.** Der Service Worker lieferte
+  statische Dateien cache-first, sodass zurückkehrende Besucher nach einem
+  Deployment weiter die alte `app.js` bekamen. Jetzt network-first mit
+  Cache-Rückfall für den Offline-Betrieb; Cache-Version auf `v2` erhöht.
+
 ### Bekannte Einschränkungen
 
 - Routing und Parkplatzsuche brauchen eine Internetverbindung: sie nutzen

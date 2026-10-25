@@ -9,7 +9,9 @@
 // connection. Everything the planner computes works offline; only the
 // background map does not. The UI says so instead of pretending otherwise.
 
-const CACHE_NAME = "hsr-shell-v1";
+// Bumped whenever the shell changes shape; the activate handler drops older
+// caches, so a new version also evicts stale files.
+const CACHE_NAME = "hsr-shell-v2";
 
 const SHELL = [
   "./",
@@ -93,13 +95,15 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets: cache first, then network, then cache the result.
+  // Static assets: network first, cache as the offline fallback.
+  //
+  // This used to be cache-first, which meant a deployment never reached
+  // returning visitors: the worker kept serving the previous app.js and
+  // routing.js until someone cleared site data. For a small app the extra
+  // request is cheap, and correctness beats a few saved milliseconds. When the
+  // network is unavailable the cached copy is used, so offline still works.
   event.respondWith(
     (async () => {
-      const cached = await caches.match(request);
-      if (cached) {
-        return cached;
-      }
       try {
         const response = await fetch(request);
         if (response.ok) {
@@ -108,7 +112,8 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       } catch {
-        return Response.error();
+        const cached = await caches.match(request);
+        return cached ?? Response.error();
       }
     })(),
   );
