@@ -62,7 +62,7 @@ Legende: **fertig** · **eingeschränkt** (funktioniert, mit benannter Lücke) �
 | Secret Scanning, Push Protection, Dependabot | fertig | im Repository aktiviert |
 | Release-Workflow | fertig | manuell ausgelöst, `release.yml` |
 | Pages-Deployment | fertig | Workflow aktiv, Pages veröffentlicht unter <https://rabvz.github.io/harz-stamp-route-planner/> |
-| Branch-Protection für `main` | fertig | Pull Request verpflichtend, Force-Push und Löschen gesperrt, gilt auch für Admins |
+| Branch-Protection für `main` | fertig | Pull Request und sechs Pflichtprüfungen, Force-Push und Löschen gesperrt, gilt auch für Admins |
 | Repository-Beschreibung, Website, Themen | fertig | im Repository hinterlegt |
 | Discussions | fertig | aktiviert; Kategorien legt GitHub selbst an |
 | Offene Punkte als Issues | fertig | [#2](https://github.com/rabvz/harz-stamp-route-planner/issues/2) bis [#15](https://github.com/rabvz/harz-stamp-route-planner/issues/15) |

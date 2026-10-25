@@ -41,7 +41,7 @@ eingerichtet:
 | Pages | Quelle: GitHub Actions, aktiv |
 | Environment `github-pages` | vorhanden; kein Required Reviewer |
 | Workflow-Berechtigungen | in allen Workflows explizit auf `contents: read` gesetzt |
-| Branch-Protection `main` | Pull Request verpflichtend, Force-Push verboten, Löschen verboten, Unterhaltungen müssen aufgelöst sein, gilt auch für Admins |
+| Branch-Protection `main` | Pull Request und sechs Pflichtprüfungen, Force-Push verboten, Löschen verboten, Unterhaltungen müssen aufgelöst sein, gilt auch für Admins |
 | Beschreibung, Website, Themen | im Repository hinterlegt |
 | Discussions | aktiviert; GitHub legt die Standardkategorien an |
 | Secret scanning und Push protection | aktiviert |
@@ -94,17 +94,27 @@ Eingestellt (Settings → Branches beziehungsweise Rules):
 - „Require a pull request before merging“ — **ohne** Pflichtzustimmung, damit
   der Solo-Betrieb arbeitsfähig bleibt
 - „Dismiss stale pull request approvals when new commits are pushed“
+- „Require status checks to pass before merging“ mit sechs Prüfungen
 - „Block force pushes“
 - „Restrict deletions“
 - „Require conversation resolution before merging“
 - „Do not allow bypassing the above settings“ (gilt auch für Admins)
 
-Statusprüfungen sind **nicht** als Pflicht hinterlegt. Ein falsch benannter
-Kontext würde sonst jeden Pull Request blockieren. Sobald die Checks stabil sind,
-lassen sich `ci (ubuntu-latest)`, `ci (windows-latest)`, `browser smoke test`,
-`dependency advisories`, `committed credentials` und `licences and sources`
-nachtragen. Die Namen stammen aus `.github/workflows/ci.yml` und
-`.github/workflows/security.yml`.
+Pflichtprüfungen:
+
+| Prüfung | Workflow |
+| --- | --- |
+| `ci (ubuntu-latest)` | `ci.yml` |
+| `ci (windows-latest)` | `ci.yml` |
+| `browser smoke test` | `ci.yml` |
+| `dependency advisories` | `security.yml` |
+| `licences and sources` | `security.yml` |
+| `committed credentials` | `security.yml` |
+
+`strict` ist aus: Der Branch muss vor dem Merge nicht auf dem neuesten Stand von
+`main` sein. Die Namen stammen aus den Workflows. **Wer einen Job umbenennt, muss
+diese Liste mit anpassen**, sonst bleibt die Prüfung auf „erwartet“ und blockiert
+jeden Pull Request.
 
 ### URL
 
