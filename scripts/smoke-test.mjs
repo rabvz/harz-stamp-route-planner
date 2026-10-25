@@ -42,6 +42,30 @@ function check(name, condition, detail = "") {
   }
 }
 
+/**
+ * Whether the run may rely on the public services.
+ *
+ * BRouter and Overpass are shared, public instances; a CI run can legitimately
+ * be rate limited. With `EXPECT_NETWORK=1` a missing route or an empty parking
+ * list is a failure; without it the test only requires that the UI reacts — and
+ * says why it could not deliver — instead of failing silently.
+ */
+const EXPECT_NETWORK = process.env.EXPECT_NETWORK === "1";
+
+/** Polls an expression in the page until the predicate holds or time is up. */
+async function poll(devtools, expression, predicate, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    last = await devtools.evaluate(expression);
+    if (predicate(last)) {
+      return last;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  return last;
+}
+
 function findBrowser() {
   for (const candidate of CANDIDATES) {
     if (existsSync(candidate)) {
@@ -230,6 +254,64 @@ try {
     "document.querySelectorAll('path[stroke=\"#a9631b\"]').length",
   );
   check("plan polyline uses the plan colour", planLines >= 1, `got ${planLines}`);
+
+  console.log("\nrouting along trails");
+  const routing = await poll(
+    devtools,
+    `(() => ({
+      summary: document.querySelector('#plan-summary')?.textContent ?? '',
+      status: document.querySelector('#plan-status')?.textContent ?? '',
+      durations: document.querySelectorAll('.day-card__head span:nth-child(2)').length,
+    }))()`,
+    (value) => /geroutet/.test(value.summary) || /geschätzt|nicht erreichbar|fehlgeschlagen|abgebrochen/i.test(value.status),
+    EXPECT_NETWORK ? 45000 : 30000,
+  );
+  if (EXPECT_NETWORK) {
+    check("plan uses routed distances", /geroutet/.test(routing.summary), `summary "${routing.summary}", status "${routing.status}"`);
+    // Real routing also yields a walking time per day; an estimate has none.
+    check("day cards show a walking time", routing.durations > 0, `got ${routing.durations}`);
+  } else {
+    check(
+      "routing reports its outcome instead of staying silent",
+      /geroutet/.test(routing.summary) || routing.status.trim().length > 0,
+      `summary "${routing.summary}", status "${routing.status}"`,
+    );
+  }
+
+  console.log("\nparking from OpenStreetMap");
+  await devtools.evaluate("document.querySelector('#find-parking').click()");
+  const parking = await poll(
+    devtools,
+    `(() => ({
+      items: document.querySelectorAll('.parking-item').length,
+      status: document.querySelector('#parking-status')?.textContent ?? '',
+    }))()`,
+    (value) => value.items > 0 || /fehlgeschlagen|nicht erreichbar|ausgelastet|Keine Parkplätze/i.test(value.status),
+    EXPECT_NETWORK ? 45000 : 30000,
+  );
+  if (EXPECT_NETWORK) {
+    check("parking search returns candidates", parking.items > 0, `status "${parking.status}"`);
+  } else {
+    check(
+      "parking search reports its outcome instead of staying silent",
+      parking.items > 0 || parking.status.trim().length > 0,
+      `items ${parking.items}, status "${parking.status}"`,
+    );
+  }
+
+  // Picking a candidate must move the start point; only meaningful when the
+  // list is populated.
+  if (parking.items > 0) {
+    const moved = await devtools.evaluate(`
+      (() => {
+        const before = document.querySelector('#start-label')?.textContent ?? '';
+        document.querySelector('.parking-item').click();
+        const after = document.querySelector('#start-label')?.textContent ?? '';
+        return { before, after };
+      })()
+    `);
+    check("choosing a parking sets the start point", moved.after.includes(","), JSON.stringify(moved));
+  }
 
   console.log("\nclustering");
   await devtools.evaluate("document.querySelector('#cluster').click()");

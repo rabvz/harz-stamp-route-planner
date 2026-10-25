@@ -17,20 +17,44 @@ export const CONFIG = {
   ],
 
   /**
-   * Optional routing service returning a GeoJSON LineString.
+   * Routing along real hiking trails.
    *
-   * `{lonlats}` is replaced with `lon,lat|lon,lat`. Leave empty to use
-   * straight-line estimates, which are clearly labelled in the UI.
+   * BRouter's public instance is the default because it needs no API key — the
+   * decisive property for a static site. It accepts a list of via points and
+   * returns one GeoJSON LineString per request, so a day costs one request.
    *
-   * Example for a self-hosted BRouter:
-   *   https://brouter.example.org/brouter?lonlats={lonlats}&profile=hiking-mountain&format=geojson
+   * `{lonlats}` is replaced with `lon,lat|lon,lat...`, `{profile}` with the
+   * profile name. Point this at your own instance if you run one:
+   *   https://brouter.example.org/brouter?lonlats={lonlats}&profile={profile}&format=geojson
    *
-   * See docs/routing-design.md for the exact contract and the reasoning.
+   * Leave `urlTemplate` empty to work purely on straight-line estimates.
    */
-  routingUrlTemplate: "",
+  routing: {
+    providerLabel: "BRouter",
+    urlTemplate:
+      "https://brouter.de/brouter?lonlats={lonlats}&profile={profile}&alternativeidx=0&format=geojson",
+    profile: "hiking-beta",
+    timeoutMs: 25000,
+    /** Via-point limit per request; longer days are split into chunks. */
+    maxWaypointsPerRequest: 16,
+  },
 
-  /** Overpass endpoint used only when the user explicitly asks for car parks. */
-  overpassEndpoint: "https://overpass-api.de/api/interpreter",
+  /**
+   * Parking candidates from OpenStreetMap.
+   *
+   * Queried only when the user clicks the button, never on page load. The
+   * public instance is a shared resource; responses are cached for ten minutes.
+   */
+  overpass: {
+    endpoint: "https://overpass-api.de/api/interpreter",
+    /** Server-side query budget, in seconds. */
+    timeoutSeconds: 30,
+    /** Client-side budget; generous because the public instance queues queries. */
+    clientTimeoutMs: 60000,
+    /** One retry smooths over the occasional slow or dropped request. */
+    attempts: 2,
+    retryDelayMs: 1500,
+  },
 
   defaults: {
     maxDayKm: 15,
@@ -38,5 +62,6 @@ export const CONFIG = {
     clusterMaxStamps: 8,
     clusterMaxDiameterM: 8000,
     maxWalkM: 1500,
+    maxParkingCandidates: 12,
   },
 };

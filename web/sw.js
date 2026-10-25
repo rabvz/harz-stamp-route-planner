@@ -22,6 +22,7 @@ const SHELL = [
   "js/config.js",
   "js/format.js",
   "js/mapview.js",
+  "js/overpass.js",
   "js/routing.js",
   "js/store.js",
   "js/wasm.js",

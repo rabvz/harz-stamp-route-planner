@@ -36,6 +36,27 @@ if (!browserPath) {
   process.exit(1);
 }
 
+/**
+ * Polls a page expression until it is truthy.
+ *
+ * The screenshot waits for real work: the Overpass query and the routing
+ * requests. Fixed sleeps would either be too short (empty list in the image) or
+ * waste time.
+ * @param {(expression: string) => Promise<any>} evaluate
+ * @param {string} expression
+ * @param {number} timeoutMs
+ */
+async function waitUntil(evaluate, expression, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await evaluate(expression)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`timed out waiting for: ${expression}`);
+}
+
 // A fresh profile keeps the screenshot reproducible: no restored selection and
 // no cached service worker from an earlier run.
 const profile = mkdtempSync(join(tmpdir(), "hsr-screenshot-"));
@@ -56,8 +77,7 @@ const browser = spawn(
   { stdio: ["ignore", "ignore", "ignore"] },
 );
 
-async function waitForTarget() {
-  const deadline = Date.now() + 20_000;
+async function waitForTarget() {  const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     try {
       const targets = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json/list`)).json();
@@ -120,7 +140,7 @@ try {
   // shows the application doing its job rather than an empty map.
   await evaluate(`
     (() => {
-      const wanted = ['HWN001','HWN002','HWN003','HWN005','HWN006','HWN009','HWN010','HWN011','HWN012'];
+      const wanted = ['HWN001','HWN002','HWN003','HWN005','HWN006'];
       let count = 0;
       for (const row of document.querySelectorAll('.stamp-item')) {
         const code = row.querySelector('.stamp-item__code')?.textContent?.trim();
@@ -129,22 +149,47 @@ try {
       return count;
     })()
   `);
-  await evaluate("document.querySelector('#use-first-stamp').click()");
+
+  // A generous day budget keeps the example tour realistic rather than showing
+  // a page full of limit warnings.
+  await evaluate(`
+    (() => {
+      const field = document.querySelector('#max-day-km');
+      field.value = '20';
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+      return field.value;
+    })()
+  `);
+
+  // Real trailhead from OpenStreetMap, then a real routed tour: the image should
+  // show what the application actually does, not a staged state.
+  await evaluate("document.querySelector('#find-parking').click()");
+  await waitUntil(
+    evaluate,
+    "document.querySelectorAll('.parking-item').length > 0",
+    40000,
+  );
+  await evaluate("document.querySelector('.parking-item')?.click()");
   await evaluate("document.querySelector('#plan').click()");
-  await new Promise((resolve) => setTimeout(resolve, 1500));
+  await waitUntil(
+    evaluate,
+    "(document.querySelector('#plan-summary')?.textContent ?? '').includes('geroutet')",
+    60000,
+  );
   await evaluate("document.querySelector('#cluster').click()");
+
   // Tooltips opened by clicking rows would sit on top of the tour.
   await evaluate("document.querySelectorAll('.leaflet-tooltip').forEach((el) => el.remove())");
-  // Scroll the sidebar so the computed plan is visible rather than the station
+  // Scroll the sidebar so the routed plan is visible rather than the station
   // list: the image should show the result, not just the input.
   await evaluate(`
     (() => {
       const panel = document.querySelector('#result-panel');
-      if (panel) panel.scrollIntoView({ block: 'end' });
+      if (panel) panel.scrollIntoView({ block: 'start' });
       return true;
     })()
   `);
-  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
 
   const screenshot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
   mkdirSync(dirname(OUTPUT), { recursive: true });

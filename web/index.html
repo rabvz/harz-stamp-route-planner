@@ -57,12 +57,16 @@
           <ul id="stamp-list" class="stamp-list" aria-label="Stempelstellen"></ul>
         </section>
 
-        <section class="panel" id="plan-panel">
-          <h2>Tour planen</h2>
+        <section class="panel" id="parking-panel">
+          <h2>Startpunkt &amp; Parkplatz</h2>
           <p class="hint">
-            Startpunkt in der Karte anklicken oder den ersten ausgewählten Stempel verwenden.
+            Wanderparkplätze aus OpenStreetMap in der Nähe der ausgewählten Stempel — oder
+            einfach in die Karte klicken.
           </p>
           <div class="row row--buttons">
+            <button type="button" id="find-parking" class="button" disabled>
+              Parkplätze suchen
+            </button>
             <button type="button" id="use-first-stamp" class="button button--secondary">
               Erster Stempel als Start
             </button>
@@ -71,7 +75,13 @@
             </button>
           </div>
           <p class="selection-summary">Start: <span id="start-label">nicht gesetzt</span></p>
+          <p id="parking-status" class="status" role="status" aria-live="polite"></p>
+          <ul id="parking-list" class="parking-list" aria-label="Parkplatzvorschläge" hidden></ul>
+          <p id="parking-attribution" class="parking-attribution" hidden></p>
+        </section>
 
+        <section class="panel" id="plan-panel">
+          <h2>Tour planen</h2>
           <div class="row">
             <label class="field">
               <span>Tagesstrecke (km)</span>

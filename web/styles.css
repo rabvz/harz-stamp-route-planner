@@ -414,6 +414,64 @@ body {
   stroke-width: 1;
 }
 
+/* Parking suggestions: a compact list of buttons, one row per candidate. */
+.parking-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  max-height: 13rem;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+
+.parking-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.25rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.parking-item:hover {
+  background: var(--amber-100);
+}
+
+.parking-item[aria-pressed="true"] {
+  background: var(--amber-100);
+  box-shadow: inset 3px 0 0 var(--amber-600);
+}
+
+.parking-item__name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parking-item__meta {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.parking-attribution {
+  margin: 0.45rem 0 0;
+  font-size: 0.7rem;
+  color: var(--ink-muted);
+}
+
+.parking-attribution a {
+  color: var(--green-700);
+}
+
 @media (max-width: 860px) {
   .layout {
     grid-template-columns: 1fr;

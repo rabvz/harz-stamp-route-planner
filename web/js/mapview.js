@@ -170,6 +170,23 @@ export function createMap(element, handlers) {
     planLayer.clearLayers();
   }
 
+  /** Fits the view to the drawn plan, if there is one. */
+  function fitPlan() {
+    const layers = planLayer.getLayers();
+    if (layers.length === 0) {
+      return;
+    }
+    const bounds = L.latLngBounds([]);
+    for (const layer of layers) {
+      if (typeof layer.getBounds === "function") {
+        bounds.extend(layer.getBounds());
+      }
+    }
+    if (bounds.isValid()) {
+      map.fitBounds(bounds.pad(0.2));
+    }
+  }
+
   /** Fits the view to all stations. */
   function fitAllStamps() {
     const points = [...markers.values()].map((marker) => marker.getLatLng());
@@ -195,6 +212,7 @@ export function createMap(element, handlers) {
     setStart,
     setPlan,
     clearPlan,
+    fitPlan,
     fitAllStamps,
     getStart,
     map,

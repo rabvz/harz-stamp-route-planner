@@ -142,6 +142,27 @@
       GPX-Export funktionieren weiterhin, weil sie vollständig lokal berechnet werden.
     </p>
 
+    <h2>Wegführung und Parkplätze</h2>
+    <p>
+      Die Route wird entlang echter Wanderwege berechnet. Dafür ruft der Browser, sobald eine Tour
+      berechnet wird, den öffentlichen Dienst
+      <a href="https://brouter.de/brouter/" rel="noopener noreferrer">BRouter</a> mit dem Profil
+      <code>hiking-beta</code> auf. Die Software steht unter der MIT-Lizenz; die Wegedaten stammen
+      aus OpenStreetMap und unterliegen der ODbL. Es wird eine Anfrage pro Tag gestellt.
+    </p>
+    <p>
+      Wanderparkplätze werden aus OpenStreetMap geladen, über die
+      <a href="https://wiki.openstreetmap.org/wiki/Overpass_API" rel="noopener noreferrer"
+        >Overpass-API</a
+      >, und zwar ausschließlich nach einem Klick auf „Parkplätze suchen“. Es sind keine
+      Parkplatzdaten im Repository enthalten. „Parkplatz“ heißt dort „jemand hat eine Fläche
+      eingetragen“, nicht „amtlicher Wanderparkplatz“.
+    </p>
+    <p>
+      Ohne Internetverbindung entfällt beides: Die Tour bleibt als Luftlinien-Schätzung stehen, und
+      die Oberfläche sagt das. Es wird keine gerade Linie als Wanderweg ausgegeben.
+    </p>
+
     <h2>Bibliotheken</h2>
     <table>
       <tr>
