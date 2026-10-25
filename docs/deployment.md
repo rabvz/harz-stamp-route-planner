@@ -40,10 +40,14 @@ eingerichtet:
 | --- | --- |
 | Pages | Quelle: GitHub Actions, aktiv |
 | Environment `github-pages` | vorhanden; kein Required Reviewer |
-| Workflow-Berechtigungen | Standard `GITHUB_TOKEN` nur lesend |
+| Workflow-Berechtigungen | in allen Workflows explizit auf `contents: read` gesetzt |
 | Branch-Protection `main` | Pull Request verpflichtend, Force-Push verboten, Löschen verboten, Unterhaltungen müssen aufgelöst sein, gilt auch für Admins |
 | Beschreibung, Website, Themen | im Repository hinterlegt |
 | Discussions | aktiviert; GitHub legt die Standardkategorien an |
+| Secret scanning und Push protection | aktiviert |
+| Dependabot-Alerts und Security-Updates | aktiviert |
+| Secret-scanning validity checks | im Repository nicht verfügbar (Status `disabled`) |
+| Branches nach dem Merge löschen | aktiviert |
 
 Ein Required Reviewer für `github-pages` wäre zusätzlicher Schutz. Er ist
 bewusst nicht gesetzt, damit ein Solo-Betrieb Deployments nicht blockiert.
@@ -56,7 +60,7 @@ bewusst nicht gesetzt, damit ein Solo-Betrieb Deployments nicht blockiert.
 | Pull Requests | dito | aktiviert (nicht abschaltbar) |
 | Discussions | dito | aktiviert, Standardkategorien (u. a. Q&A, Ideas) |
 | Wiki | dito | nicht nötig, Dokumentation liegt in `docs/` |
-| Secret scanning, Push protection | Settings → Code security | aktiviert, soweit verfügbar |
+| Secret scanning, Push protection | Settings → Code security | aktiviert |
 | Dependabot alerts, security updates | dito | aktiviert |
 
 #### Labels

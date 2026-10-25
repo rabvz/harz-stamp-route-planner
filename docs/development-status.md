@@ -59,6 +59,7 @@ Legende: **fertig** · **eingeschränkt** (funktioniert, mit benannter Lücke) �
 | Browsertest | fertig | `scripts/smoke-test.mjs`, 47 Prüfungen (mit `EXPECT_NETWORK=1` streng) |
 | CI-Workflows | fertig | `.github/workflows/` |
 | Sicherheitsprüfung (`cargo audit`, `cargo deny`) | fertig | `security.yml` |
+| Secret Scanning, Push Protection, Dependabot | fertig | im Repository aktiviert |
 | Release-Workflow | fertig | manuell ausgelöst, `release.yml` |
 | Pages-Deployment | fertig | Workflow aktiv, Pages veröffentlicht unter <https://rabvz.github.io/harz-stamp-route-planner/> |
 | Branch-Protection für `main` | fertig | Pull Request verpflichtend, Force-Push und Löschen gesperrt, gilt auch für Admins |
