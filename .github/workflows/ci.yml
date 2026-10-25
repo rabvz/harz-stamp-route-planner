@@ -1,0 +1,124 @@
+# Continuous integration.
+#
+# One job runs the exact command a contributor runs locally, `cargo xtask ci`,
+# split into steps so a failure points at the right stage. A second job proves
+# the built site actually boots in a browser, which `cargo test` cannot do.
+#
+# Security: `permissions` is read-only; no step needs more. Every external
+# action is pinned to a full commit SHA (see docs/deployment.md), which is also
+# why Dependabot is configured to keep those pins current.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  ci:
+    name: ci (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Reads rust-toolchain.toml, so the version, components and the
+      # wasm32 target are pinned in one place for CI and for contributors.
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache build artefacts
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> target"
+          key: ${{ matrix.os }}
+
+      - name: Formatting
+        run: cargo xtask fmt --check
+
+      - name: Lints
+        run: cargo xtask clippy
+
+      - name: Tests
+        run: cargo xtask test
+
+      - name: Station data drift
+        run: cargo xtask data --check
+
+      - name: Architecture rules
+        run: cargo xtask check-architecture
+
+      - name: Licence headers
+        run: cargo xtask check-licenses
+
+      - name: GPX fixtures
+        run: cargo xtask check-gpx
+
+      - name: Secret scan
+        run: cargo xtask check-secrets
+
+      - name: WebAssembly build
+        run: cargo xtask wasm
+
+      - name: Web build
+        run: cargo xtask web
+
+      - name: Upload site
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: site
+          path: dist/
+          retention-days: 7
+
+  browser:
+    name: browser smoke test
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # The artefact built above is exactly what would ship, so test that rather
+      # than rebuild it. A rebuild could pass while the uploaded files differ.
+      - name: Download the built site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: site
+          path: dist
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Serve and test in a real browser
+        run: |
+          set -eu
+          python3 -m http.server 8080 --directory dist &
+          for attempt in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/ > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8080/ > /dev/null || { echo "::error::server did not start"; exit 1; }
+          node scripts/smoke-test.mjs http://127.0.0.1:8080

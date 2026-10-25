@@ -1,0 +1,54 @@
+# Dependabot configuration.
+#
+# Two ecosystems: Cargo (Rust) and GitHub Actions. Actions matter as much as
+# crates here, because every workflow pins actions to a full commit SHA — those
+# pins only stay current if something updates them.
+#
+# Dependency pull requests go through the same `ci` workflow as any other change;
+# nothing merges automatically.
+
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:30"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "cargo"
+      include: scope
+    groups:
+      # Patch and minor bumps arrive as one pull request; majors stay separate
+      # because they need a considered review.
+      rust-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # The toolchain is pinned deliberately in rust-toolchain.toml; upgrading it
+      # is a separate, reviewed change.
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:30"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+      include: scope
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"

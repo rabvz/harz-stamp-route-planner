@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/rabvz/harz-stamp-route-planner/security/advisories/new
+    about: Bitte keine Sicherheitsprobleme als öffentliches Issue melden.
+  - name: Frage stellen
+    url: https://github.com/rabvz/harz-stamp-route-planner/discussions
+    about: Für offene Fragen, Ideen und Erfahrungsberichte.
+  - name: Dokumentation lesen
+    url: https://github.com/rabvz/harz-stamp-route-planner/blob/main/docs/development-status.md
+    about: Was fertig ist und was nicht, steht im Entwicklungsstatus.

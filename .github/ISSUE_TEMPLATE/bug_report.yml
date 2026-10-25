@@ -1,0 +1,96 @@
+name: Fehlerbericht
+description: Etwas funktioniert nicht wie erwartet.
+title: "[Bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für den Bericht. Bitte prüfen Sie vorher, ob es den Fehler schon gibt.
+
+        **Keine Sicherheitslücken hier melden** – dafür gibt es `SECURITY.md`.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Was ist passiert?
+      description: Beschreiben Sie das beobachtete Verhalten.
+      placeholder: Nach dem Klick auf „Tour berechnen“ bleibt die Ergebnisliste leer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Was war zu erwarten?
+      placeholder: Eine Liste mit den Tagen und Kilometern.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zum Nachvollziehen
+      description: Bitte so konkret wie möglich, inklusive der ausgewählten Stempelnummern.
+      placeholder: |
+        1. HWN001, HWN002, HWN003 auswählen
+        2. Startpunkt per Klick auf die Karte setzen
+        3. Tagesstrecke auf 15 km, Tage auf 3 stellen
+        4. „Tour berechnen“ klicken
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Bereich
+      options:
+        - Oberfläche / Karte
+        - Planung / Tageseinteilung
+        - Gruppierung
+        - GPX-Import
+        - GPX-Export
+        - Persönliche Daten (Speichern, Export, Import)
+        - Installation / Build
+        - Dokumentation
+        - Weiß nicht
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Steht im Fußbereich der Seite oder im Release-Namen.
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Browser und Betriebssystem
+      placeholder: Firefox 141, Windows 11
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Meldungen der Browser-Konsole
+      description: |
+        DevTools öffnen (F12) → Konsole. Fehlermeldungen hier einfügen.
+        Bitte keine persönlichen Daten mitschicken.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Vorab geprüft
+      options:
+        - label: Ich habe die bestehenden Issues durchsucht.
+          required: true
+        - label: Ich habe die Grenzen in README und docs/development-status.md gelesen.
+          required: true

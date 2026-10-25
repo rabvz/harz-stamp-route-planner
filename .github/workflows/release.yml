@@ -1,0 +1,95 @@
+# Creates a versioned GitHub release.
+#
+# Deliberately manual: not every commit should become a public release. Run this
+# workflow with a tag that already exists (for example `v0.1.0`), after merging
+# the changelog and version bump.
+#
+# The artefact contains the built site, checksums, the documentation and example
+# GPX files, so a release is usable without cloning the repository.
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, for example v0.1.0"
+        required: true
+        type: string
+      draft:
+        description: "Create the release as a draft"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: release ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify the tag exists and matches the input
+        run: |
+          set -eu
+          tag="${{ inputs.tag }}"
+          case "$tag" in
+            v*) ;;
+            *) echo "::error::tag must start with 'v', got '$tag'"; exit 1 ;;
+          esac
+          if ! git rev-parse "refs/tags/$tag" > /dev/null 2>&1; then
+            echo "::error::tag $tag does not exist in this repository"
+            exit 1
+          fi
+          echo "releasing $tag at $(git rev-parse --short HEAD)"
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Cache build artefacts
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> target"
+          key: release
+
+      - name: Quality gates
+        run: cargo xtask ci
+
+      - name: Build the site
+        run: cargo xtask web
+
+      - name: Generate example GPX files
+        run: cargo xtask examples
+
+      - name: Package artefacts
+        run: |
+          set -eu
+          tag="${{ inputs.tag }}"
+          mkdir -p release
+          (cd dist && zip -qr "../release/harz-stamp-route-planner-${tag}.zip" .)
+          cp -r examples release/examples
+          cp CHANGELOG.md ATTRIBUTION.md LICENSE-MIT LICENSE-APACHE release/
+          (cd release && sha256sum * > SHA256SUMS)
+
+      - name: Create the release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          draft: ${{ inputs.draft }}
+          generate_release_notes: true
+          body_path: CHANGELOG.md
+          files: |
+            release/*

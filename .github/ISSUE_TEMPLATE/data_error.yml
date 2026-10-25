@@ -1,0 +1,82 @@
+name: Datenfehler Stempelstelle
+description: Eine Stempelstelle fehlt, ist umgezogen, falsch benannt oder hat falsche Koordinaten.
+title: "[Daten] HWN000 – "
+labels: ["data", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Stempeldaten stammen aus der amtlichen GPX-Datei des Harzer
+        Verkehrsverbands (Stand 23.04.2025). Korrekturen können nur übernommen
+        werden, wenn eine nachvollziehbare Quelle genannt ist.
+
+        **Bitte keine Änderung ohne Quelle vorschlagen.** Ein „das weiß ich“
+        genügt nicht, weil sonst niemand die Änderung später prüfen kann.
+
+  - type: input
+    id: station
+    attributes:
+      label: Stempelnummer
+      description: Die HWN-Nummer, zum Beispiel HWN042.
+      placeholder: HWN042
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Art des Fehlers
+      options:
+        - Koordinaten falsch
+        - Name falsch geschrieben
+        - Ortsangabe fehlt oder ist falsch
+        - Höhe falsch
+        - Stempelstelle fehlt im Verzeichnis
+        - Stempelstelle existiert nicht mehr
+        - Stempelstelle ist umgezogen
+    validations:
+      required: true
+
+  - type: input
+    id: current
+    attributes:
+      label: Aktueller Wert in der Anwendung
+      placeholder: 51.6186400, 10.5043100
+    validations:
+      required: false
+
+  - type: input
+    id: correct
+    attributes:
+      label: Korrekter Wert
+      placeholder: 51.6187123, 10.5043987
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Quelle
+      description: |
+        Link auf die offizielle Seite, eine neuere GPX-Datei oder eine
+        nachvollziehbare Angabe (Datum der Begehung, Foto mit Ortsbezug).
+      placeholder: https://www.harzer-wandernadel.de/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Weitere Hinweise
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Vorab geprüft
+      options:
+        - label: Die Quelle ist öffentlich zugänglich und im Feld oben angegeben.
+          required: true
+        - label: Mir ist bewusst, dass eine Übernahme nur mit einer neuen Datensatzversion erfolgt.
+          required: true

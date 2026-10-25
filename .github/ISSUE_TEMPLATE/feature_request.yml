@@ -1,0 +1,61 @@
+name: Funktionswunsch
+description: Eine Idee, die den Planer nützlicher machen würde.
+title: "[Feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bitte beschreiben Sie zuerst das Problem, nicht die Lösung. Das hilft,
+        die beste Lösung zu finden.
+
+        Der Umfang des Projekts ist in `docs/roadmap.md` abgesteckt; manches ist
+        dort bereits als „nicht geplant“ vermerkt.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem gibt es?
+      placeholder: Ich kann nicht erkennen, welche Stempel ich an einem Tag zu Fuß erreichen kann.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Vorschlag
+      description: Wie könnte es gelöst werden? Skizzen oder Beispiele sind willkommen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativen
+      description: Was haben Sie sonst versucht oder erwogen?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Für wen ist das nützlich?
+      options:
+        - Einzelne Wanderer bei der Tagesplanung
+        - Menschen, die alle 222 Stempel sammeln
+        - Beitragende / Entwickler
+        - Betreiber der Seite
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Vorab geprüft
+      options:
+        - label: Ich habe die Roadmap gelesen.
+          required: true
+        - label: Ich habe die bestehenden Issues durchsucht.
+          required: true
+        - label: Der Vorschlag braucht keinen Server und keine Geheimnisse im Browser.
+          required: true

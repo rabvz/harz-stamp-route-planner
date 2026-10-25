@@ -1,0 +1,119 @@
+# Security checks.
+#
+# Runs on every pull request, on pushes to main, and weekly so that a newly
+# disclosed advisory is picked up even when the repository is quiet.
+#
+# `GITHUB_TOKEN` is read-only everywhere except the dependency review job, which
+# needs to write a pull request comment and nothing else.
+
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays, 06:17 UTC — off the hour to avoid the busiest slot.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    name: dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
+        with:
+          tool: cargo-audit
+
+      # Fails on a vulnerability with a published advisory. Unmaintained crates
+      # and yanked versions are reported but do not fail the build; `cargo deny`
+      # below is the stricter gate.
+      - name: Audit dependencies
+        run: cargo audit --deny warnings
+
+  licences:
+    name: licences and sources
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Check licences, advisories and sources
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check licenses advisories sources bans
+          arguments: --all-features
+
+  secrets:
+    name: committed credentials
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          cache: false
+          rustflags: ""
+
+      - name: Scan the tree
+        run: cargo xtask check-secrets
+
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  workflow-audit:
+    name: workflow hardening
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Guard the rules that are easy to break by accident: read-only default
+      # permissions and actions pinned to a full commit SHA.
+      - name: Verify workflow permissions and pinning
+        run: |
+          set -eu
+          failed=0
+          for workflow in .github/workflows/*.yml; do
+            if ! grep -qE '^permissions:' "$workflow"; then
+              echo "::error file=$workflow::workflow has no top-level permissions block"
+              failed=1
+            fi
+            if grep -qE '^\s*-?\s*permissions:\s*write-all' "$workflow"; then
+              echo "::error file=$workflow::write-all permissions are not allowed"
+              failed=1
+            fi
+            # Every `uses:` must reference a 40 character commit SHA, not a tag.
+            while IFS= read -r line; do
+              ref=$(printf '%s' "$line" | sed -E 's/.*@([^ ]+).*/\1/')
+              case "$ref" in
+                *[!0-9a-f]*) echo "::error file=$workflow::action not pinned to a SHA: $line"; failed=1 ;;
+                *) [ ${#ref} -eq 40 ] || { echo "::error file=$workflow::action ref is not a full SHA: $line"; failed=1; } ;;
+              esac
+            done < <(grep -E '^\s*-?\s*uses:\s*[^ ]+@' "$workflow" | sed -E 's/^\s*-?\s*uses:\s*//' | grep -v '^\./')
+          done
+          exit $failed

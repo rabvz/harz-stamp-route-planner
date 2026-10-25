@@ -1,0 +1,78 @@
+name: Routingproblem
+description: Die berechneten Wege, Kilometer oder Tageseinteilungen sind unplausibel.
+title: "[Routing] "
+labels: ["routing", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Wichtig zu wissen: Ohne konfigurierten Routing-Dienst rechnet der Planer
+        mit **Luftlinie × 1,25**. Dann sind Abweichungen zu echten Wanderwegen
+        normal und kein Fehler. Die Oberfläche zeigt in diesem Fall
+        „geschätzt“ an.
+
+        Bitte prüfen Sie zuerst, ob bei Ihnen „geschätzt“ oder „geroutet“ steht.
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Modus
+      options:
+        - "geschätzt (kein Routing-Dienst konfiguriert)"
+        - "geroutet (eigener Dienst konfiguriert)"
+        - "weiß nicht"
+    validations:
+      required: true
+
+  - type: input
+    id: stations
+    attributes:
+      label: Beteiligte Stempelstellen
+      description: Kommagetrennte HWN-Nummern.
+      placeholder: HWN001, HWN002, HWN030
+    validations:
+      required: true
+
+  - type: input
+    id: settings
+    attributes:
+      label: Einstellungen
+      description: Tagesstrecke und maximale Tage.
+      placeholder: 15 km, 7 Tage
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Beobachtetes Ergebnis
+      description: Tage, Reihenfolge, Kilometer – bitte möglichst genau.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Erwartetes Ergebnis und Begründung
+      description: Warum ist das andere Ergebnis plausibler? Kartenausschnitt oder Ortskenntnis helfen.
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Konfigurierter Routing-Dienst
+      description: Nur ausfüllen, wenn Sie einen eigenen Dienst eingetragen haben.
+      placeholder: BRouter, hiking-mountain
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Vorab geprüft
+      options:
+        - label: Ich habe den Modus (geschätzt/geroutet) geprüft.
+          required: true
+        - label: Ich habe die Erklärungen in docs/routing-design.md gelesen.
+          required: true
