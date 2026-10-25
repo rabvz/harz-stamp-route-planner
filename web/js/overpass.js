@@ -160,6 +160,33 @@ async function requestOnce(query, outerSignal) {
 }
 
 /**
+ * Statuses that mean "the service is busy", not "your request is wrong".
+ *
+ * The public Overpass instance answers an overloaded backend with 502 or 504
+ * within a few hundred milliseconds. Reporting that as "Parkplatzsuche
+ * fehlgeschlagen (HTTP 502)" — as an earlier revision did — tells the user
+ * nothing and invites them to think the app is broken.
+ */
+function isBusyStatus(status) {
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+/** Explains a busy response in a way the user can act on. */
+function busyMessage(status) {
+  if (status === 429) {
+    return (
+      "OpenStreetMap (Overpass) drosselt gerade Anfragen. Bitte in einer Minute erneut " +
+      "versuchen — oder den Startpunkt per Kartenklick setzen."
+    );
+  }
+  return (
+    `OpenStreetMap (Overpass) hatte einen vorübergehenden Fehler (HTTP ${status}). ` +
+    "Das kommt bei dem öffentlichen Dienst gelegentlich vor. Bitte noch einmal auf " +
+    "„Parkplätze suchen“ drücken — oder den Startpunkt per Kartenklick setzen."
+  );
+}
+
+/**
  * Fetches parking candidates inside the given bounds.
  * @param {{south: number, west: number, north: number, east: number}} bounds
  * @param {{signal?: AbortSignal, force?: boolean}} [options]
@@ -172,34 +199,44 @@ export async function fetchParkingCandidates(bounds, options = {}) {
     return { candidates: cached.candidates, attribution: ATTRIBUTION };
   }
 
-  const attempts = Math.max(1, CONFIG.overpass.attempts ?? 2);
+  const attempts = Math.max(1, CONFIG.overpass.attempts ?? 3);
+  const pause = () =>
+    new Promise((resolve) => setTimeout(resolve, CONFIG.overpass.retryDelayMs ?? 2000));
+
   let response = null;
   let lastError = null;
+
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       response = await requestOnce(query, options.signal);
-      break;
     } catch (error) {
+      // A timeout is worth another try; an abort or a DNS failure is not.
       lastError = error;
-      // Only a timeout is worth retrying; an abort or a network failure is not.
       if (!/nicht rechtzeitig/.test(error.message) || attempt + 1 >= attempts) {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, CONFIG.overpass.retryDelayMs ?? 1500));
+      await pause();
+      continue;
     }
-  }
-  if (!response) {
-    throw lastError ?? new Error("Parkplatzsuche fehlgeschlagen.");
+
+    if (response.ok) {
+      break;
+    }
+
+    if (isBusyStatus(response.status)) {
+      lastError = new Error(busyMessage(response.status));
+      if (attempt + 1 < attempts) {
+        await pause();
+        continue;
+      }
+      throw lastError;
+    }
+
+    throw new Error(`Parkplatzsuche fehlgeschlagen (HTTP ${response.status}).`);
   }
 
-  if (!response.ok) {
-    if (response.status === 429 || response.status === 504) {
-      throw new Error(
-        "Der Overpass-Dienst ist ausgelastet. Bitte in einer Minute erneut versuchen " +
-          "oder den Startpunkt per Kartenklick setzen.",
-      );
-    }
-    throw new Error(`Parkplatzsuche fehlgeschlagen (HTTP ${response.status}).`);
+  if (!response || !response.ok) {
+    throw lastError ?? new Error("Parkplatzsuche fehlgeschlagen.");
   }
 
   const payload = await response.json();

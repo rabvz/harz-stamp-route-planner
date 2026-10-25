@@ -51,9 +51,9 @@ export const CONFIG = {
     timeoutSeconds: 30,
     /** Client-side budget; generous because the public instance queues queries. */
     clientTimeoutMs: 60000,
-    /** One retry smooths over the occasional slow or dropped request. */
-    attempts: 2,
-    retryDelayMs: 1500,
+    /** Three attempts ride out the occasional 502 or dropped request. */
+    attempts: 3,
+    retryDelayMs: 2000,
   },
 
   defaults: {

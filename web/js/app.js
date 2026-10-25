@@ -341,9 +341,14 @@ async function searchParking() {
   }
 
   elements.findParking.disabled = true;
+  // The whole-Harz query takes about 35 seconds on the public instance. Say so
+  // instead of leaving the user staring at "Frage OpenStreetMap ab …".
+  const span = Math.max(bounds.north - bounds.south, bounds.east - bounds.west);
   setStatus(
     elements.parkingStatus,
-    "Frage OpenStreetMap ab … der öffentliche Dienst braucht manchmal bis zu einer Minute.",
+    span > 0.15
+      ? "Große Auswahl: Die Abfrage kann bis zu einer Minute dauern. Weniger Stempel beschleunigen sie."
+      : "Frage OpenStreetMap ab … der öffentliche Dienst braucht manchmal bis zu einer Minute.",
   );
   try {
     const { candidates } = await fetchParkingCandidates(bounds);
