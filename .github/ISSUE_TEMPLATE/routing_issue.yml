@@ -1,5 +1,5 @@
 name: Routingproblem
-description: Die berechneten Wege, Kilometer oder Tageseinteilungen sind unplausibel.
+description: Die berechneten Wege, Kilometer oder Höhen sind unplausibel.
 title: "[Routing] "
 labels: ["routing", "triage"]
 body:
@@ -37,8 +37,8 @@ body:
     id: settings
     attributes:
       label: Einstellungen
-      description: Tagesstrecke und maximale Tage.
-      placeholder: 15 km, 7 Tage
+      description: Maximale Strecke in Kilometern.
+      placeholder: 15 km
     validations:
       required: true
 
@@ -46,7 +46,7 @@ body:
     id: observed
     attributes:
       label: Beobachtetes Ergebnis
-      description: Tage, Reihenfolge, Kilometer – bitte möglichst genau.
+      description: Reihenfolge, Kilometer und Höhenprofil – bitte möglichst genau.
     validations:
       required: true
 

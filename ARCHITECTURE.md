@@ -45,7 +45,7 @@ drei Eigenschaften, die das Projekt tragen:
 | `parking-search` | Ranking von Parkplatzkandidaten | `geo-engine`, `stamp-core` |
 | `stamp-clustering` | Gruppierung der Auswahl | `geo-engine`, `stamp-core` |
 | `routing-client` | Provider-Abstraktion, GeoJSON-Parser, Cache | `geo-engine` |
-| `route-optimizer` | Reihenfolge, 2-opt, Tageseinteilung | `geo-engine`, `stamp-core`, `routing-client` |
+| `route-optimizer` | Reihenfolge, 2-opt, Tagestour | `geo-engine`, `stamp-core`, `routing-client` |
 | `gpx` | GPX 1.1 lesen und schreiben | `geo-engine`, `stamp-core` |
 | `wasm-bindings` | JSON-ABI, Request-Dispatch | alle oben genannten || `xtask` | Entwickleraufgaben | `gpx`, `stamp-core` |
 
@@ -94,7 +94,7 @@ StampCatalog::embedded()  ──►  catalog()  ──►  Marker + Liste
                     Auswahl ◄──────┘
                        │
                        ├──► clusters()  ──►  Gruppen
-                       ├──► plan()      ──►  Tage, Distanzen, Warnungen
+                       ├──► plan()      ──►  Tagestour, Distanzen, Warnungen
                        └──► exportGpx() ──►  GPX-Text
                                    ▲
                importGpx()  ───────┘
@@ -109,9 +109,8 @@ rechnen, als dem getesteten.
 
 ### Optimierung
 
-Ein Tagesausflug startet und endet am selben Parkplatz. Die Reihenfolge der
-Stempel ist damit ein offener Pfad mit festem Start; mehrere Tage machen daraus
-ein Fahrzeugrouting-Problem mit Kapazitätsgrenze — NP-schwer. Umgesetzt ist:
+Eine Tagestour startet und endet am selben Parkplatz. Die Reihenfolge der
+Stempel ist damit ein offener Pfad mit festem Start. Umgesetzt ist:
 
 1. **Distanzmatrix** über Parkplatz und Stempel. Der Aufrufer darf sie liefern
    (echte Routingdistanzen); sonst füllt `StraightLineProvider` sie mit
@@ -120,23 +119,37 @@ ein Fahrzeugrouting-Problem mit Kapazitätsgrenze — NP-schwer. Umgesetzt ist:
    Stempelnummer.
 3. **2-opt** auf dem offenen Pfad mit fixiertem Start, nur bei echter
    Verkürzung; das garantiert Termination und Konvergenz.
-4. **Greedy-Tageinteilung** unter dem Tageslimit.
 
 **Danach übernimmt die Oberfläche das Routing** (`web/js/app.js`,
-`web/js/routing.js`): Jede Tagesroute geht als Liste von Wegpunkten an BRouter
-zurück und liefert echte Distanz, Gehzeit und Geometrie. Weil echte Wege oft
-doppelt so lang sind wie die Schätzung, werden die Tagesgrenzen anschließend
-nachjustiert: Der letzte Stempel eines zu langen Tages wandert in den Folgetag,
-beide Tage werden neu geroutet, höchstens acht Durchläufe. Was danach noch über
-dem Limit liegt, wird gemeldet.
+`web/js/routing.js`): Die ganze Tagestour geht als Liste von Wegpunkten an
+BRouter zurück und liefert echte Distanz, Gehzeit, Geometrie und Höhe je Punkt.
+Überschreitet die geroutete Tour das Limit, wird sie als zu lang gemeldet; die
+Auswahl bleibt vollständig. Eine Aufteilung in mehrere Tage gibt es bewusst
+nicht.
 
 Bewusste Entscheidung: Der **Kern** optimiert auf der Matrix, nicht auf der
-Straßengeometrie; das Routing ist ein nachgelagerter Schritt in der
-Oberfläche. Eine Optimierung auf echten Distanzen wäre eine Matrix mit
-`(n+1)²` Anfragen — möglich (die `plan`-Operation nimmt eine Matrix entgegen),
-aber für zehn Stempel über hundert Abfragen. Die Trennung hält den Kern
-testbar und die Last auf öffentlichen Diensten niedrig. Details:
-`docs/routing-design.md`.
+Straßengeometrie; das Routing ist ein nachgelagerter Schritt in der Oberfläche.
+Eine Optimierung auf echten Distanzen wäre eine Matrix mit `(n+1)²` Anfragen —
+möglich (die `plan`-Operation nimmt eine Matrix entgegen), aber für zehn Stempel
+über hundert Abfragen. Die Trennung hält den Kern testbar und die Last auf
+öffentlichen Diensten niedrig. Details: `docs/routing-design.md`.
+
+### Track bearbeiten
+
+Wegpunkte gehören zur Interaktion, nicht zum Kern: `web/js/app.js` hält sie als
+geordnete Liste zwischen den Stempeln, `web/js/routing.js` schickt sie als
+Via-Punkte an BRouter. Der Kern sieht nur die Reihenfolge der Stempel. Das
+Einrasten (`web/js/track.js`) projiziert auf die zuletzt berechnete
+Weggeometrie; die liegt auf OpenStreetMap-Wegen. Weitere Wege in der Nähe werden
+nicht abgefragt — das wäre eine Overpass-Anfrage pro Zug. Die Grenze steht in
+`README.md`.
+
+### Höhenprofil
+
+BRouter liefert die Höhe als dritte Koordinate jedes Geometriepunkts. Das Profil
+wird daraus berechnet (`web/js/track.js`) und als SVG gezeichnet
+(`web/js/profile.js`): kein Diagramm-Paket, keine erfundene Kurve. Fehlt die Höhe
+(geschätzte Tour), wird kein Profil gezeigt.
 
 ### Gruppierung
 
@@ -147,10 +160,9 @@ mehr wert als ein marginal besseres Partitionsergebnis.
 
 ### Warum Warnungen statt Fehler
 
-Wenn eine gewählte Stempelstelle im Tageslimit nicht erreichbar ist, wäre ein
-Abbruch die schlechteste Antwort: der Nutzer verliert seine Auswahl. Der Plan
-wird geliefert, der Tag als `oversized` markiert und die Einschränkung benannt.
-Dasselbe gilt für zu viele Tage.
+Wenn die gewählte Auswahl im Streckenlimit nicht zu schaffen ist, wäre ein
+Abbruch die schlechteste Antwort: der Nutzer verliert seine Auswahl. Die Tour
+wird geliefert, als `oversized` markiert und die Einschränkung benannt.
 
 ## 6. Determinismus
 

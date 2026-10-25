@@ -3,8 +3,8 @@
 ## Problem
 
 Eine Wanderung folgt Wegen, keine Luftlinie. Der Planer muss also echte
-Wegdistanzen kennen, um Kilometer, Tageseinteilung, Karte und GPX-Track sinnvoll
-zu berechnen.
+Wegdistanzen kennen, um Kilometer, Tagestour, Karte, Höhenprofil und GPX-Track
+sinnvoll zu berechnen.
 
 Gleichzeitig gilt eine harte Randbedingung: **GitHub Pages hat kein Backend.**
 Eine statische Seite kann keinen API-Schlüssel geheim halten. Jede Lösung, die
@@ -35,19 +35,19 @@ Zwei Bausteine, bewusst getrennt:
 Die letzte Zeile ist praktisch wichtig: ohne CORS könnte der Browser den Dienst
 nicht aufrufen.
 
-### Eine Anfrage pro Tag, nicht pro Etappe
+### Eine Anfrage pro Tagestour, nicht pro Etappe
 
-BRouter akzeptiert eine ganze Tagesroute als Liste von Wegpunkten:
+BRouter akzeptiert die ganze Tour als Liste von Wegpunkten:
 
 ```text
 Parkplatz → Stempel 1 → Stempel 2 → … → Parkplatz
 ```
 
-Damit kostet ein Tag **eine** Anfrage statt einer pro Kettenglied, und die
-Antwort ist eine durchgehende Linie — genau das, was Karte und GPX brauchen.
-Ein Fünftageplan braucht fünf Anfragen. Die Grenze von 16 Wegpunkten pro Anfrage
-ist in `web/js/config.js` hinterlegt; längere Tage werden in überlappende Stücke
-geteilt und die Distanzen summiert.
+Damit kostet eine Tagestour **eine** Anfrage statt einer pro Kettenglied, und die
+Antwort ist eine durchgehende Linie — genau das, was Karte, Höhenprofil und GPX
+brauchen. Die Grenze von 16 Wegpunkten pro Anfrage ist in `web/js/config.js`
+hinterlegt; längere Touren werden in überlappende Stücke geteilt und die
+Distanzen summiert.
 
 ### Reihenfolge und Wege sind getrennt
 
@@ -55,16 +55,40 @@ Die Optimierung (Nearest-Neighbour + 2-opt) rechnet auf einer **geschätzten**
 Distanzmatrix, weil eine echte Matrix `(n+1)²` Anfragen kosten würde — bei zehn
 Stempeln über hundert. Deshalb:
 
-1. Reihenfolge und Tageseinteilung aus der Schätzung (sofort sichtbar),
-2. jede Tagesroute über BRouter (echte Distanz, echte Geometrie, Gehzeit),
-3. **Nachjustierung**: Überschreitet ein Tag mit mehreren Stempeln das Limit,
-   wandert der letzte Stempel in den Folgetag und beide Tage werden neu geroutet
-   — höchstens acht Durchläufe. Was danach noch über dem Limit liegt, wird
-   gemeldet statt kaschiert.
+1. Reihenfolge aus der Schätzung (sofort sichtbar),
+2. die ganze Tagestour über BRouter (echte Distanz, echte Geometrie, Gehzeit,
+   Höhe),
+3. Überschreitet die geroutete Tour das Limit, wird sie als zu lang gemeldet.
+   Die Auswahl bleibt vollständig; eine Aufteilung in mehrere Tage gibt es nicht.
 
 Das ist eine bewusste Entscheidung: eine echte Optimierung auf dem Wegenetz wäre
 ein eigener Dienst. Die Architektur lässt sie zu (siehe unten), ohne den Kern zu
 ändern.
+
+### Track bearbeiten
+
+Nach dem Routing kann der Track über zusätzliche Wegpunkte angepasst werden
+(`web/js/app.js`, `web/js/track.js`):
+
+- **Setzen:** Ein Klick in die Karte fügt einen Wegpunkt ein. Er wird auf die
+  aktuelle Weggeometrie projiziert und an der passenden Stelle zwischen den
+  Stempeln einsortiert.
+- **Verschieben:** Wegpunkte sind auf der Karte ziehbar. Liegt der abgelegte
+  Punkt höchstens 120 m neben der berechneten Route, rastet er auf ihr ein;
+  weiter entfernt bleibt er frei, und BRouter sucht den nächsten Weg dorthin.
+- **Entfernen:** über das Menü des Wegpunkts oder die Liste.
+- Jede Änderung löst **eine** neue Routing-Anfrage aus.
+
+Das Einrasten nutzt die zuletzt berechnete Route, nicht alle Wege in der Nähe.
+Eine Suche über sämtliche OSM-Wege bräuchte eine Overpass-Abfrage bei jedem Zug;
+die Grenze ist in `README.md` benannt.
+
+### Höhenprofil
+
+BRouter gibt die Höhe als dritte Koordinate jedes Punkts zurück. Daraus entstehen
+Auf- und Abstieg sowie die Profilkurve (geglättet, mit 1-m-Schwelle gegen
+Rauschwerte). Ohne Routing gibt es keine Höhendaten, und die Oberfläche zeigt
+dann auch kein Profil.
 
 ### Rückfall ohne Netz
 
@@ -137,7 +161,7 @@ urlTemplate: "https://brouter.example.org/brouter?lonlats={lonlats}&profile={pro
 
 Ein leerer `urlTemplate` schaltet das Routing ab; der Planer arbeitet dann rein
 auf Schätzungen. Antworten werden im Speicher zwischengespeichert, damit
-dieselbe Tagesroute nicht mehrfach abgefragt wird.
+dieselbe Tagestour nicht mehrfach abgefragt wird.
 
 ## Warum kein Schlüssel im Client
 

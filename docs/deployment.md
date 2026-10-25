@@ -31,18 +31,22 @@ permissions:
 `contents: read` gilt für den Build; `pages: write` und `id-token: write` nur im
 Deploy-Job.
 
-### Einmalige Einrichtung im Repository
+### Repository-Einstellungen
 
-Diese Schritte sind **nicht** im Code und können von einem Agenten ohne
-Berechtigung nicht ausgeführt werden:
+Diese Schritte liegen außerhalb des Codes. Stand 2026-10-25 sind sie
+eingerichtet:
 
-1. *Settings → Pages → Build and deployment → Source: GitHub Actions.*
-2. *Settings → Environments → github-pages* prüfen; empfohlen ist eine
-   Required-Reviewer-Regel, damit Deployments bewusst freigegeben werden.
-3. Optional *Settings → Actions → General → Workflow permissions*:
-   „Read repository contents permission“ als Standard.
-4. Optional Ruleset für `main`: Pull Request verpflichtend, Force-Push verboten,
-   Statusprüfung `ci` verpflichtend.
+| Einstellung | Wert |
+| --- | --- |
+| Pages | Quelle: GitHub Actions, aktiv |
+| Environment `github-pages` | vorhanden; kein Required Reviewer |
+| Workflow-Berechtigungen | Standard `GITHUB_TOKEN` nur lesend |
+| Branch-Protection `main` | Pull Request verpflichtend, Force-Push verboten, Löschen verboten, Unterhaltungen müssen aufgelöst sein, gilt auch für Admins |
+| Beschreibung, Website, Themen | im Repository hinterlegt |
+| Discussions | aktiviert; GitHub legt die Standardkategorien an |
+
+Ein Required Reviewer für `github-pages` wäre zusätzlicher Schutz. Er ist
+bewusst nicht gesetzt, damit ein Solo-Betrieb Deployments nicht blockiert.
 
 #### Issues, Pull Requests und Discussions
 
@@ -50,7 +54,7 @@ Berechtigung nicht ausgeführt werden:
 | --- | --- | --- |
 | Issues | Settings → General → Features | aktiviert |
 | Pull Requests | dito | aktiviert (nicht abschaltbar) |
-| Discussions | dito | aktiviert, Kategorie „Q&A“ und „Ideas“ |
+| Discussions | dito | aktiviert, Standardkategorien (u. a. Q&A, Ideas) |
 | Wiki | dito | nicht nötig, Dokumentation liegt in `docs/` |
 | Secret scanning, Push protection | Settings → Code security | aktiviert, soweit verfügbar |
 | Dependabot alerts, security updates | dito | aktiviert |
@@ -58,15 +62,16 @@ Berechtigung nicht ausgeführt werden:
 #### Labels
 
 Diese Labels werden von den Vorlagen in `.github/ISSUE_TEMPLATE/` und von
-`dependabot.yml` erwartet. GitHub legt sie nicht automatisch an:
+`dependabot.yml` erwartet; sie sind im Repository angelegt:
 
 | Label | Farbe | Bedeutung |
 | --- | --- | --- |
 | `bug` | `#d73a4a` | Fehler |
 | `data` | `#0e8a16` | Stempel- oder Datensatzfehler |
-| `routing` | `#1d76db` | Wege, Distanzen, Tageseinteilung |
+| `routing` | `#1d76db` | Wege, Distanzen, Tagestour |
 | `enhancement` | `#a2eeef` | Funktionswunsch |
 | `documentation` | `#0075ca` | Dokumentation |
+| `accessibility` | `#f143ab` | Barrierefreiheit |
 | `triage` | `#fbca04` | noch nicht gesichtet |
 | `good first issue` | `#7057ff` | gut geeigneter Einstieg |
 | `help wanted` | `#008672` | Unterstützung gesucht |
@@ -77,29 +82,37 @@ Geeignete Einstiegspunkte für `good first issue`: Dokumentationskorrekturen,
 Übersetzung der Oberfläche, ein zusätzlicher Testfall für den GPX-Import, eine
 bessere Fehlermeldung beim Import fremder Dateien.
 
-#### Ruleset für `main`
+#### Branch-Protection für `main`
 
-Empfohlene Regel (Settings → Rules → New ruleset → Branch):
+Eingestellt (Settings → Branches beziehungsweise Rules):
 
 - Ziel: `main`
-- „Require a pull request before merging“ mit mindestens einer Zustimmung
-- „Require status checks to pass“: `ci (ubuntu-latest)`, `ci (windows-latest)`,
-  `browser smoke test`, `dependency advisories`, `licences and sources`
+- „Require a pull request before merging“ — **ohne** Pflichtzustimmung, damit
+  der Solo-Betrieb arbeitsfähig bleibt
+- „Dismiss stale pull request approvals when new commits are pushed“
 - „Block force pushes“
-- „Require linear history“ (optional, passt zum Squash-Merge)
 - „Restrict deletions“
+- „Require conversation resolution before merging“
+- „Do not allow bypassing the above settings“ (gilt auch für Admins)
+
+Statusprüfungen sind **nicht** als Pflicht hinterlegt. Ein falsch benannter
+Kontext würde sonst jeden Pull Request blockieren. Sobald die Checks stabil sind,
+lassen sich `ci (ubuntu-latest)`, `ci (windows-latest)`, `browser smoke test`,
+`dependency advisories`, `committed credentials` und `licences and sources`
+nachtragen. Die Namen stammen aus `.github/workflows/ci.yml` und
+`.github/workflows/security.yml`.
 
 ### URL
 
-Bei Repository-Namen `harz-stamp-route-planner`:
+Die Seite ist unter
 
 ```text
-https://<benutzer>.github.io/harz-stamp-route-planner/
+https://rabvz.github.io/harz-stamp-route-planner/
 ```
 
-Die Anwendung nutzt ausschließlich relative Pfade und funktioniert deshalb auch
-in einem Unterverzeichnis. Es ist kein `base`-Pfad zu konfigurieren, weil es
-keinen Bundler gibt.
+erreichbar. Die Anwendung nutzt ausschließlich relative Pfade und funktioniert
+deshalb auch in einem Unterverzeichnis. Es ist kein `base`-Pfad zu
+konfigurieren, weil es keinen Bundler gibt.
 
 ## 2. Andere statische Hoster
 
@@ -130,9 +143,11 @@ node scripts/smoke-test.mjs http://127.0.0.1:8080
 ```
 
 Der letzte Schritt startet ein Headless-Chromium und prüft Start, Auswahl,
-Planung, Gruppierung, GPX-Export und Manifest. Er ersetzt keinen Test auf einem
-echten Mobilgerät, fängt aber die Fehlerklasse ab, die `cargo test` nicht sieht
-(WebAssembly-Grenze, fehlende Datei, falscher MIME-Typ).
+Stempelpass, Planung, Routing, Höhenprofil, Track-Bearbeitung, Gruppierung,
+GPX-Export, Manifest und die Persistenz nach einem Neuladen. Er ersetzt keinen
+Test auf einem echten Mobilgerät, fängt aber die Fehlerklasse ab, die
+`cargo test` nicht sieht (WebAssembly-Grenze, fehlende Datei, falscher
+MIME-Typ).
 
 ## 4. Releases
 

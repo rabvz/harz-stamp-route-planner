@@ -23,7 +23,7 @@ body:
     id: expected
     attributes:
       label: Was war zu erwarten?
-      placeholder: Eine Liste mit den Tagen und Kilometern.
+      placeholder: Eine Tagestour mit Kilometern, Gehzeit und Höhenprofil.
     validations:
       required: true
 
@@ -35,8 +35,8 @@ body:
       placeholder: |
         1. HWN001, HWN002, HWN003 auswählen
         2. Startpunkt per Klick auf die Karte setzen
-        3. Tagesstrecke auf 15 km, Tage auf 3 stellen
-        4. „Tour berechnen“ klicken
+        3. Maximale Strecke auf 15 km stellen
+        4. „Tagestour berechnen“ klicken
     validations:
       required: true
 
@@ -46,7 +46,10 @@ body:
       label: Bereich
       options:
         - Oberfläche / Karte
-        - Planung / Tageseinteilung
+        - Planung / Tagestour
+        - Track-Bearbeitung
+        - Höhenprofil
+        - Stempelpass
         - Gruppierung
         - GPX-Import
         - GPX-Export

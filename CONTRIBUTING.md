@@ -56,7 +56,7 @@ GNU-Host-Toolchain mit selbst mitgeliefertem Linker — Details in
   Anbindung an OpenStreetMap/Overpass.
 - **Barrierefreiheit**: Die Oberfläche ist tastaturbedienbar, aber nicht
   getestet mit Screenreadern.
-- **Tests**: Randfälle in GPX-Import, Gruppierung und Tageseinteilung.
+- **Tests**: Randfälle in GPX-Import, Gruppierung und Tagestour.
 
 ## Stil
 
