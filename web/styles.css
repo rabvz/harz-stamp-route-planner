@@ -688,6 +688,12 @@ body {
   .stamp-list {
     max-height: 11rem;
   }
+
+  /* The engine badge names the routing profile; on a phone the nowrap rule
+     would push the header wider than the viewport. */
+  .badge {
+    white-space: normal;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
