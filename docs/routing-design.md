@@ -3,8 +3,8 @@
 ## Problem
 
 Eine Wanderung folgt Wegen, keine Luftlinie. Der Planer muss also echte
-Wegdistanzen kennen, um Kilometer, Tageseinteilung und GPX-Track sinnvoll zu
-berechnen.
+Wegdistanzen kennen, um Kilometer, Tageseinteilung, Karte und GPX-Track sinnvoll
+zu berechnen.
 
 Gleichzeitig gilt eine harte Randbedingung: **GitHub Pages hat kein Backend.**
 Eine statische Seite kann keinen API-Schlüssel geheim halten. Jede Lösung, die
@@ -12,22 +12,144 @@ einen Schlüssel im JavaScript braucht, ist damit ausgeschlossen.
 
 ## Entscheidung
 
-Der Rust-Kern kennt **kein I/O**. Er arbeitet auf einer Distanzmatrix und auf
-einer Provider-Abstraktion:
+Zwei Bausteine, bewusst getrennt:
 
-```rust
-pub trait RouteProvider {
-    fn name(&self) -> &'static str;
-    fn is_estimate(&self) -> bool;
-    fn route(&self, from: LatLon, to: LatLon) -> Result<RouteLeg, RoutingError>;
+1. **Der Rust-Kern kennt kein I/O.** Er arbeitet auf einer Distanzmatrix und
+   einer Provider-Abstraktion (`routing-client`). Damit läuft derselbe Code
+   nativ in Tests und im Browser.
+2. **Die Wegführung holt die Oberfläche.** `web/js/routing.js` ruft einen
+   öffentlichen Dienst auf, der ohne Schlüssel auskommt: **BRouter** mit dem
+   Profil `hiking-beta` (Datenbasis OpenStreetMap).
+
+### Warum BRouter
+
+| Kriterium | BRouter |
+| --- | --- |
+| Schlüssel nötig | nein — entscheidend für eine statische Seite |
+| Wanderprofil | ja (`hiking-beta`, `hiking-mountain`) |
+| Mehrere Wegpunkte pro Anfrage | ja, als Liste in `lonlats` |
+| Antwortformat | GeoJSON-Linie mit `track-length` und `total-time` |
+| Eigener Betrieb | ja, Java-Anwendung, MIT-Lizenz |
+| CORS | `Access-Control-Allow-Origin: *` |
+
+Die letzte Zeile ist praktisch wichtig: ohne CORS könnte der Browser den Dienst
+nicht aufrufen.
+
+### Eine Anfrage pro Tag, nicht pro Etappe
+
+BRouter akzeptiert eine ganze Tagesroute als Liste von Wegpunkten:
+
+```text
+Parkplatz → Stempel 1 → Stempel 2 → … → Parkplatz
+```
+
+Damit kostet ein Tag **eine** Anfrage statt einer pro Kettenglied, und die
+Antwort ist eine durchgehende Linie — genau das, was Karte und GPX brauchen.
+Ein Fünftageplan braucht fünf Anfragen. Die Grenze von 16 Wegpunkten pro Anfrage
+ist in `web/js/config.js` hinterlegt; längere Tage werden in überlappende Stücke
+geteilt und die Distanzen summiert.
+
+### Reihenfolge und Wege sind getrennt
+
+Die Optimierung (Nearest-Neighbour + 2-opt) rechnet auf einer **geschätzten**
+Distanzmatrix, weil eine echte Matrix `(n+1)²` Anfragen kosten würde — bei zehn
+Stempeln über hundert. Deshalb:
+
+1. Reihenfolge und Tageseinteilung aus der Schätzung (sofort sichtbar),
+2. jede Tagesroute über BRouter (echte Distanz, echte Geometrie, Gehzeit),
+3. **Nachjustierung**: Überschreitet ein Tag mit mehreren Stempeln das Limit,
+   wandert der letzte Stempel in den Folgetag und beide Tage werden neu geroutet
+   — höchstens acht Durchläufe. Was danach noch über dem Limit liegt, wird
+   gemeldet statt kaschiert.
+
+Das ist eine bewusste Entscheidung: eine echte Optimierung auf dem Wegenetz wäre
+ein eigener Dienst. Die Architektur lässt sie zu (siehe unten), ohne den Kern zu
+ändern.
+
+### Rückfall ohne Netz
+
+Ist BRouter nicht erreichbar, bleibt die Schätzung stehen (Luftlinie × 1,25),
+die Oberfläche schreibt „geschätzt“ und der GPX-Export enthält keinen Track. Es
+wird nie eine gerade Linie als Wanderweg ausgegeben.
+
+## Vertrag mit dem Dienst
+
+Aufgerufen wird:
+
+```text
+GET https://brouter.de/brouter
+    ?lonlats=<lon,lat|lon,lat|...>
+    &profile=hiking-beta
+    &alternativeidx=0
+    &format=geojson
+```
+
+Erwartet wird GeoJSON:
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [{
+    "type": "Feature",
+    "geometry": { "type": "LineString", "coordinates": [[lon, lat, ele], "..."] },
+    "properties": { "track-length": "2909", "total-time": "2264" }
+  }]
 }
 ```
 
-Es gibt zwei Wege, echte Distanzen zu bekommen:
+`track-length` ist die Distanz in Metern, `total-time` die Gehzeit in Sekunden —
+**beides als Zeichenkette**. Der Parser wandelt Zahlen und Zeichenketten, weil
+`Number.isFinite("2909")` falsch ist und die Distanz sonst stillschweigend aus
+der Geometrie gemessen würde.
 
-### A. Matrix von außen (bevorzugt)
+Ebenfalls akzeptiert werden `Feature` und `LineString` mit
+`properties.summary.distance` / `.duration` (OpenRouteService, Valhalla). Fehlt
+die Zusammenfassung, wird die Länge aus der Geometrie gemessen und die Dauer aus
+4,5 km/h abgeleitet.
 
-Die Oberfläche baut die Matrix und übergibt sie an die `plan`-Operation:
+## Parkplätze
+
+Die Startpunkte kommen aus OpenStreetMap über die Overpass-API
+(`web/js/overpass.js`): `amenity=parking` und `highway=layby` im Umkreis der
+Auswahl. Die Abfrage läuft **nur** auf ausdrücklichen Klick, wird zehn Minuten
+zwischengespeichert und mit einem einzigen Wiederholungsversuch bei Zeitüberschreitung
+wiederholt. Die Kandidaten werden im Rust-Kern (`parking-search`) sortiert: nach
+Anzahl erreichbarer Stempel, mittlerem Fußweg und Art des Parkplatzes.
+
+## Konfiguration
+
+```js
+// web/js/config.js
+routing: {
+  providerLabel: "BRouter",
+  urlTemplate: "https://brouter.de/brouter?lonlats={lonlats}&profile={profile}&alternativeidx=0&format=geojson",
+  profile: "hiking-beta",
+  timeoutMs: 25000,
+  maxWaypointsPerRequest: 16,
+},
+```
+
+`{lonlats}` und `{profile}` werden ersetzt. Ein eigener BRouter:
+
+```js
+urlTemplate: "https://brouter.example.org/brouter?lonlats={lonlats}&profile={profile}&format=geojson",
+```
+
+Ein leerer `urlTemplate` schaltet das Routing ab; der Planer arbeitet dann rein
+auf Schätzungen. Antworten werden im Speicher zwischengespeichert, damit
+dieselbe Tagesroute nicht mehrfach abgefragt wird.
+
+## Warum kein Schlüssel im Client
+
+Ein Schlüssel in einer statischen Seite ist öffentlich, unabhängig davon, wie er
+verschleiert wird. Wer einen Dienst mit Schlüssel nutzen will, braucht einen
+eigenen Proxy. Die Architektur ist darauf vorbereitet: derselbe Rust-Kern läuft
+hinter einem Backend, weil er kein I/O kennt — nur `wasm-bindings` müsste durch
+einen HTTP-Handler ersetzt werden.
+
+## Nächster Ausbauschritt: Matrix von außen
+
+Die `plan`-Operation akzeptiert bereits eine fertige Distanzmatrix:
 
 ```json
 {
@@ -41,92 +163,20 @@ Die Oberfläche baut die Matrix und übergibt sie an die `plan`-Operation:
 }
 ```
 
-Die Matrix ist zeilenweise, `(n+1)²` Einträge, Index 0 ist der Parkplatz. Dann
-ist `estimated: false` und die Optimierung läuft auf echten Distanzen.
+Mit `matrix` rechnet der Kern auf echten Distanzen, `estimated` wird `false`.
+Kosten: `(n+1)²` Anfragen, deshalb für kleine Auswahlen gedacht. Der Aufbau im
+Browser mit Fortschritt und Abbruch ist der nächste Schritt (siehe
+[roadmap.md](roadmap.md)).
 
-Kosten: `n²` Anfragen. Für 20 Stempel sind das 400. Deshalb ist dieser Weg für
-kleine Auswahlen vorgesehen; die Oberfläche kann ihn mit Fortschrittsanzeige und
-Abbruch anbieten.
+## Selbst betriebene Alternativen
 
-### B. Etappen nachrüsten (Standard in 0.1)
-
-Der Plan wird zunächst mit Luftlinie berechnet. Ist ein Dienst konfiguriert,
-holt die Oberfläche anschließend die Geometrie der **berechneten** Etappen
-(`2n` Anfragen, eine pro Kettenglied). Die Distanzen werden ersetzt, der Track
-steht für den GPX-Export zur Verfügung. Die Reihenfolge selbst beruht weiterhin
-auf der Schätzung.
-
-Das ist bewusst so: es ist ehrlich, schnell und für eine Tagesausflugsplanung
-meist ausreichend. Die Oberfläche schreibt in diesem Fall „geroutet“, sonst
-„geschätzt“.
-
-## Vertrag mit dem Dienst
-
-Die Oberfläche spricht einen **einzigen** Endpunkt an und erwartet eine
-GeoJSON-Linie:
-
-```text
-GET <routingUrlTemplate mit {lonlats} ersetzt>
-    {lonlats} = "lon,lat|lon,lat"
-```
-
-Antwort, minimal:
-
-```json
-{
-  "type": "LineString",
-  "coordinates": [[10.5799757, 51.841649], [10.6027742, 51.8301677]],
-  "properties": { "distance": 2450.0, "duration": 1800.0 }
-}
-```
-
-Ebenfalls akzeptiert: `Feature` und `FeatureCollection` mit
-`geometry: LineString` und `properties.summary.distance` / `.duration`. Das ist
-die gemeinsame Schnittmenge von BRouter, OpenRouteService und Valhalla im
-GeoJSON-Modus. Fehlt `distance`, wird die Länge aus der Geometrie gemessen;
-fehlt `duration`, wird sie aus der Gehgeschwindigkeit abgeleitet.
-
-Der Parser liegt in `web/js/routing.js` (`parseRoute`); die Rust-Seite hat mit
-`routing-client/src/geojson.rs` eine zweite, getestete Implementierung für den
-Matrix-Weg.
-
-## Konfiguration
-
-In `web/js/config.js`:
-
-```js
-routingUrlTemplate:
-  "https://brouter.example.org/brouter?lonlats={lonlats}&profile=hiking-mountain&format=geojson",
-```
-
-Leer lassen = Schätzbetrieb. Es gibt keinen Standard-Dienst, weil ein fremder
-Server nicht ungefragt mit dem Verkehr einer öffentlichen Anwendung belastet
-werden soll.
-
-## Warum kein Schlüssel im Client
-
-Ein Schlüssel in einer statischen Seite ist öffentlich, unabhängig davon, wie er
-verschleiert wird. Wer einen Dienst mit Schlüssel nutzen will, braucht einen
-eigenen Proxy. Die Architektur ist darauf vorbereitet: derselbe Rust-Kern läuft
-hinter einem Backend, weil er kein I/O kennt — nur `wasm-bindings` müsste durch
-einen HTTP-Handler ersetzt werden.
-
-## Selbst betriebene Alternativen (lizenzkonform)
-
-| Dienst | Profile | Lizenz der Software | Bemerkung |
+| Dienst | Wanderprofil | Lizenz der Software | Bemerkung |
 | --- | --- | --- | --- |
-| BRouter | hiking, hiking-mountain | MIT | Java, lokal oder als Dienst; Daten aus OpenStreetMap |
-| Valhalla | pedestrian | MIT/Apache-2.0 (Teile) | C++, eigene Kacheln nötig |
-| OpenRouteService | foot-hiking | GPL-3.0 | als Dienst mit Schlüssel oder selbst betrieben |
+| BRouter | `hiking-beta`, `hiking-mountain` | MIT | Java, lokal oder als Dienst, Daten aus OpenStreetMap |
+| Valhalla | `pedestrian` | MIT/Apache-2.0 (Teile) | C++, eigene Kacheln nötig |
+| OpenRouteService | `foot-hiking` | GPL-3.0 | als Dienst mit Schlüssel oder selbst betrieben |
 | OSRM | – | BSD-2 | kein Fußprofil in der Standarddistribution |
 
-Bei allen gilt: die **Routingdaten** stammen meist aus OpenStreetMap und
-unterliegen der ODbL. Wer einen Dienst öffentlich betreibt, muss die
-Attribution sichtbar führen. Details in [data-sources.md](data-sources.md).
-
-## Offene Arbeit
-
-1. Matrix-Aufbau im Browser mit Begrenzung und Fortschritt (Roadmap 0.2).
-2. Overpass-Anbindung für Parkplätze.
-3. Höhenprofil aus der Track-Geometrie.
-4. Entscheidung, ob ein Referenzdienst dokumentiert beworben wird.
+Bei allen gilt: Die **Routingdaten** stammen meist aus OpenStreetMap und
+unterliegen der ODbL. Wer einen Dienst öffentlich betreibt, muss die Attribution
+sichtbar führen. Details in [data-sources.md](data-sources.md).

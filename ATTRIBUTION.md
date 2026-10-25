@@ -59,7 +59,38 @@ baut kein Offline-Kartenpaket; das wäre mit der
 OpenStreetMap Foundation nicht vereinbar. Die Kartenattribution ist in der
 Oberfläche und auf `attribution.html` sichtbar.
 
-## 4. Bibliotheken
+## 4. Routing- und Parkplatzdienste
+
+Diese Dienste ruft der Browser zur Laufzeit auf; es ist kein fremder Code
+eingebunden.
+
+### BRouter (Wegführung)
+
+| Feld | Wert |
+| --- | --- |
+| Dienst | `https://brouter.de/brouter`, Profil `hiking-beta` |
+| Software | BRouter, © Armin Falkner und Mitwirkende, **MIT-Lizenz** |
+| Datengrundlage | OpenStreetMap, **ODbL 1.0** |
+| Bezug | <https://brouter.de/brouter/> |
+| Aufrufe | eine Anfrage pro Tag, nur beim Berechnen einer Tour |
+
+Wer den öffentlichen Dienst in größerem Umfang nutzt, sollte eine eigene Instanz
+betreiben; die Software ist frei. Die Projektkonfiguration lässt das über
+`web/js/config.js` zu.
+
+### Overpass / OpenStreetMap (Wanderparkplätze)
+
+| Feld | Wert |
+| --- | --- |
+| Dienst | `https://overpass-api.de/api/interpreter` |
+| Daten | © OpenStreetMap-Mitwirkende, **ODbL 1.0** |
+| Bezug | <https://wiki.openstreetmap.org/wiki/Overpass_API> |
+| Aufrufe | nur auf Klick, Ergebnis zehn Minuten zwischengespeichert |
+
+Die Attribution „© OpenStreetMap-Mitwirkende“ steht in der Oberfläche direkt
+unter der Parkplatzliste und im Fußbereich.
+
+## 5. Bibliotheken
 
 ### Leaflet 1.9.4
 
@@ -96,12 +127,12 @@ Es werden keine externen Schriften geladen. Die Oberfläche verwendet die
 Systemschrift des Geräts. Die Symbole in `web/icons/` sind eigene SVG-Zeichnungen
 unter der Projektlizenz.
 
-## 5. Bezug zu Wikipedia oder anderen Textquellen
+## 6. Bezug zu Wikipedia oder anderen Textquellen
 
 Es wurde kein fremder Fließtext übernommen. Beschreibungen in der Oberfläche
 stammen aus dem Projekt oder aus den Sachangaben der Stempeldaten.
 
-## 6. Meldung einer fehlenden Attribution
+## 7. Meldung einer fehlenden Attribution
 
 Wenn eine Quelle fehlt oder falsch zugeordnet ist, bitte ein Issue mit dem
 Label `attribution` eröffnen. Solche Meldungen werden vor anderen Aufgaben

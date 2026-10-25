@@ -60,26 +60,46 @@ Verstoß gegen die Nutzungsrichtlinie.
 
 ## 3. Routingdaten
 
-Der Planer liefert **keine** Routingdaten mit. Woher sie kommen, entscheidet die
-Konfiguration des Betreibers; siehe [routing-design.md](routing-design.md).
+Der Planer liefert **keine** Routingdaten mit. Die Wegführung holt er zur
+Laufzeit von **BRouter** (Profil `hiking-beta`), dessen Datengrundlage
+OpenStreetMap ist.
 
-Typischerweise stammen sie aus OpenStreetMap (ODbL). Wer einen Routing-Dienst
-öffentlich betreibt, muss die ODbL-Attribution sichtbar führen und die
-Share-Alike-Bedingungen beachten.
+| Feld | Wert |
+| --- | --- |
+| Dienst | `https://brouter.de/brouter`, Profil `hiking-beta` |
+| Software | BRouter, MIT-Lizenz (Java, auch selbst betreibbar) |
+| Daten | OpenStreetMap, ODbL 1.0 |
+| Ablage | keine; Antworten nur im Arbeitsspeicher |
+| Aufrufe | eine Anfrage pro Tag, nur beim Berechnen einer Tour |
+
+Wer den Dienst öffentlich betreibt oder einen eigenen einsetzt, muss die
+ODbL-Attribution sichtbar führen und die Share-Alike-Bedingungen beachten.
+Details und Alternativen: [routing-design.md](routing-design.md).
 
 ## 4. Parkplatzdaten
 
-Derzeit **keine** mitgelieferten Daten. Gründe:
+Es sind **keine** Parkplatzdaten mitgeliefert; sie kommen aus OpenStreetMap über
+die Overpass-API.
 
-- Ein von Hand gepflegtes Verzeichnis wäre eine Datenbank mit unklarer
-  Rechtslage und unklarer Aktualität.
-- OpenStreetMap-Daten (`amenity=parking`, `highway=layby`) dürfen unter ODbL
-  genutzt werden, wenn die Attribution sichtbar ist. Der Weg dorthin ist die
-  Overpass-API.
+| Feld | Wert |
+| --- | --- |
+| Abfrage | `amenity=parking`, `highway=layby` im Umkreis der Auswahl |
+| Dienst | `https://overpass-api.de/api/interpreter` |
+| Lizenz | ODbL 1.0, Attribution „© OpenStreetMap-Mitwirkende“ |
+| Aufrufe | nur auf Klick, Ergebnis zehn Minuten zwischengespeichert |
+| Filter | `access=private`, `=no`, `=customers` werden verworfen |
 
-Die Operation `parking` der WASM-API nimmt Kandidaten entgegen und bewertet sie;
-die Oberfläche bindet Overpass noch nicht an (siehe Roadmap). Wer die Funktion
-vorab testet, kann die Operation direkt aufrufen.
+Ein eigenes Verzeichnis wäre die Alternative, wurde aber bewusst verworfen: Es
+hätte unklare Rechtslage und würde veralten.
+
+**Was die Daten nicht sind.** „Parkplatz“ in OpenStreetMap bedeutet „jemand hat
+eine Fläche eingetragen“, nicht „offizieller Wanderparkplatz der Harzer
+Wandernadel“. Öffnungszeiten, Gebühren und saisonale Sperrungen werden nicht
+ausgewertet. Die Rangfolge (Anzahl erreichbarer Stempel, Fußweg, Art) ist eine
+Plausibilitätshilfe, keine Zusage.
+
+Bewertet werden die Kandidaten im Rust-Kern (`parking-search`), nicht in
+JavaScript — dieselbe Logik läuft damit auch in Tests.
 
 ## 5. Geodätische Grundlagen
 

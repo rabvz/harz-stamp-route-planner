@@ -29,26 +29,40 @@ gekennzeichnet; die Grenzen stehen in `README.md` und
   2-opt-Verbesserung mit fixiertem Start, Greedy-Tageseinteilung unter
   Tageslimit. Nicht erreichbare Stempel werden als Warnung gemeldet statt
   verworfen.
+- **Routing entlang echter Wanderwege**: BRouter mit Profil `hiking-beta`,
+  ohne API-Schlüssel. Eine Anfrage pro Tag über alle Wegpunkte; echte Distanz,
+  Gehzeit und durchgehende Geometrie für Karte und GPX. Nach dem Routing werden
+  die Tagesgrenzen an die echten Distanzen angepasst (bis zu acht Durchläufe),
+  verbleibende Überschreitungen werden gemeldet. Ohne Netz bleibt die
+  Luftlinien-Schätzung, klar gekennzeichnet.
+- **Wanderparkplätze aus OpenStreetMap**: Overpass-Abfrage für
+  `amenity=parking` und `highway=layby` im Umkreis der Auswahl, ausschließlich
+  auf Klick, mit Cache und einem Wiederholungsversuch. Sortiert im Rust-Kern
+  nach erreichbaren Stempeln, Fußweg und Parkplatzart; `access=private` und
+  ähnliches werden verworfen.
 - **Gruppierung** der Auswahl in räumlich zusammenhängende Tagestouren mit
   Durchmesser- und Stempellimit, deterministisch und ohne Verletzung der
   Garantien.
-- **Parkplatz-Ranking** für von außen gelieferte Kandidaten (OpenStreetMap-
-  Tauglichkeit, Abdeckung, Fußweg).
+- **Parkplatz-Ranking** im Rust-Kern (`parking-search`) für die von außen
+  gelieferten Kandidaten (Abdeckung, Fußweg, Art des Parkplatzes).
 - **Routing-Abstraktion** mit Offline-Fallback (Luftlinie × 1,25), GeoJSON-Parser
-  für BRouter/ORS/Valhalla und Routencache.
+  für BRouter/ORS/Valhalla (auch Zahlen als Zeichenkette) und Routencache.
 - **GPX 1.1**: Import mit Zuordnung über `HWNnnn`-Namen, Export von Wegpunkten
-  und optionalem Track, deterministische Ausgabe, Escaping von Sonderzeichen.
+  und Track aus der echten Weggeometrie, deterministische Ausgabe, Escaping von
+  Sonderzeichen.
 - **WebAssembly-ABI** ohne `wasm-bindgen`: vier C-Funktionen, JSON-Protokoll,
   layoutgenaue Allokation, Fehlerbehandlung ohne Panic über die Grenze.
 - **Oberfläche** als statische Seite ohne Framework und ohne Bundler:
-  Leaflet-Karte mit 222 Markern, Suche, Auswahl, Planung, Gruppen, GPX-Export
-  und -Import, Datenexport als JSON, IndexedDB-Persistenz, PWA-Manifest und
-  Service Worker.
+  Leaflet-Karte mit 222 Markern, Suche, Auswahl, Parkplatzliste, Planung,
+  Gruppen, GPX-Export und -Import, Datenexport als JSON, IndexedDB-Persistenz,
+  PWA-Manifest und Service Worker.
 - **`cargo xtask`** als einziger Einstiegspunkt: `ci`, `fmt`, `clippy`, `test`,
-  `data`, `wasm`, `web`, `serve` sowie Prüfungen für Architektur, Lizenzen und
-  GPX.
+  `data`, `examples`, `wasm`, `web`, `serve` sowie Prüfungen für Architektur,
+  Lizenzen, GPX und Geheimnisse.
 - **Browsertest** (`scripts/smoke-test.mjs`), der die Seite in einem echten
-  Chromium über das DevTools-Protokoll prüft.
+  Chromium über das DevTools-Protokoll prüft — inklusive Routingergebnis,
+  Parkplatzliste, fehlgeschlagener Same-Origin-Anfragen und Ausnahmen. Mit
+  `EXPECT_NETWORK=1` werden Routing und Parkplatzsuche streng geprüft.
 - **CI/CD**: `ci.yml`, `security.yml` (cargo audit, cargo deny, Dependabot),
   `release.yml` (manuell, mit Prüfsummen) und `deploy-pages.yml` (nur `main`,
   geschütztes Environment).
@@ -60,11 +74,13 @@ gekennzeichnet; die Grenzen stehen in `README.md` und
 
 ### Bekannte Einschränkungen
 
-- Ohne konfigurierten Routing-Dienst beruhen Distanzen auf Luftlinie × 1,25; der
-  GPX-Export enthält dann keinen Track. Die Oberfläche kennzeichnet das.
-- Es ist kein Parkplatzverzeichnis enthalten; Startpunkte werden per Kartenklick
-  gesetzt.
-- Die Bedienoberfläche funktioniert offline, die Kartenkacheln nicht.
+- Routing und Parkplatzsuche brauchen eine Internetverbindung: sie nutzen
+  öffentliche Dienste (BRouter, Overpass). Ohne Netz bleibt die
+  Luftlinien-Schätzung; der GPX-Export enthält dann keinen Track.
+- Die Reihenfolge der Stempel wird auf der geschätzten Distanz berechnet, nicht
+  auf der Wegematrix; die Tagesgrenzen werden anschließend nachjustiert.
+- Parkplätze sind OpenStreetMap-Einträge, keine amtlichen Wanderparkplätze.
+- Die Bedienoberfläche funktioniert offline, Kartenkacheln und Routing nicht.
 - GitHub Pages, Discussions und Branch-Protection sind im Repository noch nicht
   aktiviert; siehe `docs/deployment.md`.
 

@@ -33,15 +33,17 @@ Legende: **fertig** · **eingeschränkt** (funktioniert, mit benannter Lücke) �
 | Karte mit 222 Markern | fertig | Leaflet, lokal eingebunden |
 | Auswahl per Marker und Liste | fertig | im Browser geprüft |
 | Suche und Filter | fertig | Name, Ort, HWN-Nummer |
-| Tour berechnen | fertig | mit Luftlinien-Schätzung |
+| Tour berechnen | fertig | Reihenfolge auf Schätzung, Tage geroutet |
+| Routing entlang von Wanderwegen | fertig | BRouter `hiking-beta`, im Browser geprüft |
+| Tagesgrenzen nach dem Routing anpassen | fertig | bis zu acht Durchläufe, Rest wird gemeldet |
 | Gruppen bilden | fertig | |
 | GPX-Export der Auswahl | fertig | im Browser geprüft |
-| GPX-Export der Tour | eingeschränkt | Track nur mit Routing-Dienst |
+| GPX-Export der Tour | fertig | inklusive Track aus der Weggeometrie |
 | GPX-Import | fertig | Zuordnung über `HWNnnn` |
 | Startpunkt per Kartenklick | fertig | |
-| Parkplätze aus OpenStreetMap | offen | Operation vorhanden, Oberfläche nicht angebunden |
+| Parkplätze aus OpenStreetMap | fertig | Overpass, im Browser geprüft; nur auf Klick |
 | Persistenz (IndexedDB) | fertig | plus JSON-Export und -Import |
-| Progressive Web App | eingeschränkt | Bedienoberfläche offline, Karte nicht |
+| Progressive Web App | eingeschränkt | Bedienoberfläche offline, Karte und Routing nicht |
 | Mobiles Layout | fertig | Breakpoint 860 px, nicht auf echten Geräten getestet |
 
 ## Werkzeuge und Qualität
@@ -52,7 +54,7 @@ Legende: **fertig** · **eingeschränkt** (funktioniert, mit benannter Lücke) �
 | Architekturprüfung | fertig | `xtask/src/checks.rs` |
 | Lizenzprüfung (SPDX) | fertig | dito |
 | Datensatz-Driftprüfung | fertig | `cargo xtask data --check` |
-| Browsertest | fertig | `scripts/smoke-test.mjs`, 15 Prüfungen |
+| Browsertest | fertig | `scripts/smoke-test.mjs`, 20 Prüfungen (mit `EXPECT_NETWORK=1` streng) |
 | CI-Workflows | fertig | `.github/workflows/` |
 | Sicherheitsprüfung (`cargo audit`, `cargo deny`) | fertig | `security.yml` |
 | Release-Workflow | fertig | manuell ausgelöst, `release.yml` |
@@ -60,17 +62,21 @@ Legende: **fertig** · **eingeschränkt** (funktioniert, mit benannter Lücke) �
 
 ## Offene Punkte
 
-1. **Echtes Routing im Standardbetrieb.** Ohne eingetragenen Dienst rechnet der
-   Planer mit Luftlinie × 1,25. Der GPX-Export enthält dann keinen Track. Siehe
+1. **Routing nur online.** Die Wegführung kommt von einem öffentlichen BRouter.
+   Ohne Netz bleibt die Luftlinien-Schätzung, klar gekennzeichnet. Ein eigener
+   Dienst ist in `web/js/config.js` eintragbar; siehe
    [routing-design.md](routing-design.md).
-2. **Parkplatzverzeichnis.** Es ist keines enthalten. Kandidaten können über die
-   `parking`-Operation eingespeist werden; die Oberfläche bindet Overpass noch
-   nicht an.
-3. **Screenshots und Demo.** Der Screenshot in `docs/images/` wurde lokal
+2. **Optimierung und Routing sind getrennt.** Die Reihenfolge entsteht aus der
+   Schätzung, die Tagesgrenzen werden danach an die echten Distanzen angepasst.
+   Eine Matrix über echte Distanzen (echte Optimierung) ist der nächste Schritt.
+3. **Parkplatzdaten sind OpenStreetMap-Daten.** Vollständigkeit, Zugang und
+   Öffnungszeiten sind nicht geprüft; die Oberfläche sagt das nicht bei jedem
+   Eintrag, die Dokumentation schon.
+4. **Screenshots und Demo.** Der Screenshot in `docs/images/` wurde lokal
    erzeugt. Die Live-Adresse funktioniert erst nach Aktivierung von GitHub Pages.
-4. **Testabdeckung der Oberfläche.** Der Smoke-Test deckt den Hauptpfad ab;
+5. **Testabdeckung der Oberfläche.** Der Smoke-Test deckt den Hauptpfad ab;
    Import, Datenexport und Fehlerfälle der Oberfläche sind nicht automatisiert.
-5. **Barrierefreiheit.** Tastaturbedienung ist vorhanden, ein Test mit
+6. **Barrierefreiheit.** Tastaturbedienung ist vorhanden, ein Test mit
    Screenreadern fehlt.
 
 ## Blockiert
@@ -81,7 +87,6 @@ Legende: **fertig** · **eingeschränkt** (funktioniert, mit benannter Lücke) �
 | Discussions aktivieren | Repository-Einstellung | Berechtigung am Repository |
 | Branch-Protection / Rulesets für `main` | Repository-Einstellung | Berechtigung am Repository |
 | Öffentliches Release 0.1.0 | bewusste Freigabe | Entscheidung des Maintainers |
-| Parkplatzdaten mit Weiterverbreitungsrecht | keine geprüfte Quelle | Datenquelle oder Entscheidung für Overpass |
 
 ## Nächste Schritte
 

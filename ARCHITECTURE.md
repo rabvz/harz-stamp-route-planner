@@ -122,10 +122,21 @@ ein Fahrzeugrouting-Problem mit Kapazitätsgrenze — NP-schwer. Umgesetzt ist:
    Verkürzung; das garantiert Termination und Konvergenz.
 4. **Greedy-Tageinteilung** unter dem Tageslimit.
 
-Bewusste Entscheidung: Die Optimierung läuft auf der Matrix, nicht auf der
-Straßengeometrie. Ein echter Tourenoptimierer auf dem Wegenetz wäre ein eigener
-Dienst; die Architektur lässt das zu, ohne den Kern zu ändern (siehe
-`docs/routing-design.md`).
+**Danach übernimmt die Oberfläche das Routing** (`web/js/app.js`,
+`web/js/routing.js`): Jede Tagesroute geht als Liste von Wegpunkten an BRouter
+zurück und liefert echte Distanz, Gehzeit und Geometrie. Weil echte Wege oft
+doppelt so lang sind wie die Schätzung, werden die Tagesgrenzen anschließend
+nachjustiert: Der letzte Stempel eines zu langen Tages wandert in den Folgetag,
+beide Tage werden neu geroutet, höchstens acht Durchläufe. Was danach noch über
+dem Limit liegt, wird gemeldet.
+
+Bewusste Entscheidung: Der **Kern** optimiert auf der Matrix, nicht auf der
+Straßengeometrie; das Routing ist ein nachgelagerter Schritt in der
+Oberfläche. Eine Optimierung auf echten Distanzen wäre eine Matrix mit
+`(n+1)²` Anfragen — möglich (die `plan`-Operation nimmt eine Matrix entgegen),
+aber für zehn Stempel über hundert Abfragen. Die Trennung hält den Kern
+testbar und die Last auf öffentlichen Diensten niedrig. Details:
+`docs/routing-design.md`.
 
 ### Gruppierung
 

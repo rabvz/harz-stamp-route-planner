@@ -1,19 +1,19 @@
 # Harzer Wandernadel Tourenplaner
 
-Ein Tourenplaner für die **Harzer Wandernadel**: Stempelstellen auswählen, Tage
-einteilen, Wanderparkplätze finden und die Tour als GPX exportieren. Die
-Berechnung läuft vollständig im Browser als Rust/WebAssembly-Modul; es gibt
-keinen Server, kein Konto und keine Telemetrie.
+Ein Tourenplaner für die **Harzer Wandernadel**: Stempelstellen auswählen,
+Wanderparkplätze in der Nähe finden, Tage einteilen und die Tour **entlang
+echter Wanderwege** berechnen — als GPX mit Weggeometrie exportierbar. Die
+Berechnung läuft im Browser als Rust/WebAssembly-Modul; es gibt keinen Server,
+kein Konto und keine Telemetrie.
 
 [![CI](https://github.com/rabvz/harz-stamp-route-planner/actions/workflows/ci.yml/badge.svg)](https://github.com/rabvz/harz-stamp-route-planner/actions/workflows/ci.yml)
 [![Lizenz: MIT OR Apache-2.0](https://img.shields.io/badge/Lizenz-MIT%20OR%20Apache--2.0-blue.svg)](#lizenz)
 
-> **Projektstatus: Alpha.** Der Planer rechnet, exportiert und läuft als
-> statische Seite. Was noch fehlt, steht ungeschönt unter
-> [Grenzen](#grenzen-und-offene-punkte) — insbesondere echte Weggeometrie ohne
-> konfigurierten Routing-Dienst und ein mitgeliefertes Parkplatzverzeichnis.
+> **Projektstatus: Alpha.** Der Planer rechnet entlang echter Wege, findet
+> Wanderparkplätze über OpenStreetMap und exportiert GPX samt Track. Was noch
+> fehlt, steht ungeschönt unter [Grenzen](#grenzen-und-offene-punkte).
 
-![Screenshot des Planers: Karte mit Stempelstellen, Auswahl und berechneter Tour](docs/images/screenshot.png)
+![Screenshot des Planers: geroutete Tour entlang von Wanderwegen mit Tagesplanung](docs/images/screenshot.png)
 
 ## Funktionen
 
@@ -22,14 +22,14 @@ keinen Server, kein Konto und keine Telemetrie.
 | 222 Stempelstellen mit Koordinaten | **fertig** | aus der amtlichen GPX-Datei, Stand 23.04.2025 |
 | Interaktive Karte mit Auswahl | **fertig** | Klick auf Marker oder Liste |
 | Suche und Filter | **fertig** | nach Name, Ort und HWN-Nummer |
+| **Routing entlang von Wanderwegen** | **fertig** | BRouter, Profil `hiking-beta`, ohne Schlüssel |
+| **Wanderparkplätze aus OpenStreetMap** | **fertig** | Overpass-Abfrage im Umkreis, nach erreichbaren Stempeln sortiert |
 | Automatische Gruppierung | **fertig** | deterministisch, mit Durchmesser- und Stempel-Limit |
-| Tourenoptimierung | **fertig** | Nearest-Neighbour + 2-opt, Tageslimit |
-| Tageseinteilung mit Warnungen | **fertig** | überschreitbare Tage werden gemeldet, nicht verschwiegen |
-| GPX-Export (Wegpunkte) | **fertig** | GPX 1.1, deterministisch |
-| GPX-Export (Track) | **eingeschränkt** | nur mit konfiguriertem Routing-Dienst |
+| Tourenoptimierung | **fertig** | Nearest-Neighbour + 2-opt, danach echte Wege |
+| Tageseinteilung mit Nachjustierung | **fertig** | Tagesgrenzen werden nach dem Routing an echte Distanzen angepasst |
+| GPX-Export (Wegpunkte und Track) | **fertig** | GPX 1.1, inklusive Weggeometrie |
 | GPX-Import | **fertig** | ordnet `HWNnnn`-Namen Stempelstellen zu |
-| Parkplatzsuche | **eingeschränkt** | Startpunkt per Kartenklick; kein mitgeliefertes Verzeichnis |
-| Offline-Bedienung (PWA) | **fertig** | Oberfläche und Rechenkern; **Karte nicht** |
+| Offline-Bedienung (PWA) | **eingeschränkt** | Oberfläche und Rechenkern ja; Karte und Routing nein |
 | Persönliche Daten lokal | **fertig** | IndexedDB, Export und Import als JSON |
 
 ## Live-Demo
@@ -107,23 +107,35 @@ gehen nur zwei Arten von Anfragen, beide optional beziehungsweise unvermeidlich
 für die Karte:
 
 1. Kartenkacheln an den konfigurierten Kachel-Server (Standard: OpenStreetMap).
-2. Anfragen an einen Routing-Dienst — nur wenn einer in `web/js/config.js`
-   eingetragen ist.
+2. Anfragen an BRouter für die Wegführung — eine Anfrage pro Tag, sobald eine
+   Tour berechnet wird.
+3. Eine Overpass-Abfrage für Wanderparkplätze — ausschließlich nach einem Klick
+   auf „Parkplätze suchen“, nie beim Laden der Seite.
+
+Alle drei Dienste sind in `web/js/config.js` austauschbar; wer eigene Instanzen
+betreibt, kann die Adressen dort ersetzen.
 
 ## Grenzen und offene Punkte
 
 Diese Liste ist Teil der Dokumentation, nicht ein Zukunftsversprechen:
 
-- **Weggeometrie**: Ohne konfigurierten Routing-Dienst rechnet der Planer mit
-  Luftlinie × 1,25. Die Oberfläche kennzeichnet das als Schätzung, und der
-  GPX-Export enthält dann bewusst keinen erfundenen Track. Wie ein Dienst
-  angebunden wird, steht in [docs/routing-design.md](docs/routing-design.md).
-- **Parkplätze**: Es ist kein Parkplatzverzeichnis enthalten. Startpunkte werden
-  per Kartenklick gesetzt; Kandidaten aus OpenStreetMap können über die API des
-  Planers eingespeist werden (`parking`-Operation).
-- **Offline-Karte**: Die Bedienoberfläche und der Rechenkern funktionieren
-  offline, die Kartenkacheln nicht. Ein Kachel-Archiv wäre mit der
-  Nutzungsrichtlinie von OpenStreetMap nicht vereinbar.
+- **Routing über einen öffentlichen Dienst**: Die Wegführung kommt von
+  BRouter (Profil `hiking-beta`, Datenbasis OpenStreetMap). Ist der Dienst nicht
+  erreichbar, zeigt die Oberfläche die Luftlinien-Schätzung und sagt das; der
+  GPX-Export enthält dann keinen Track. Ein eigener BRouter lässt sich in
+  `web/js/config.js` eintragen.
+- **Optimierung auf Schätzung, Wege danach**: Die Reihenfolge der Stempel wird
+  auf der geschätzten Distanz berechnet, erst die fertigen Tage werden geroutet.
+  Echte Wege weichen davon ab; deshalb passt der Planer die Tagesgrenzen nach
+  dem Routing an (bis zu acht Durchläufe) und meldet Tage, die trotzdem über dem
+  Limit bleiben.
+- **Parkplätze aus OpenStreetMap**: „Parkplatz“ heißt dort „jemand hat eine
+  Fläche eingetragen“, nicht „offizieller Wanderparkplatz der Harzer
+  Wandernadel“. Zugangsbeschränkungen sind gefiltert, Öffnungszeiten und
+  Gebühren werden nicht ausgewertet.
+- **Offline-Karte und Offline-Routing**: Die Bedienoberfläche und der Rechenkern
+  funktionieren offline, Kartenkacheln und Wegführung nicht. Ein Kachel-Archiv
+  wäre mit der Nutzungsrichtlinie von OpenStreetMap nicht vereinbar.
 - **Navigation**: Der Planer plant Touren, er navigiert nicht.
 - **Datenaktualität**: Neue oder eingezogene Stempelstellen erscheinen erst nach
   einem neuen Datensatz (`cargo xtask data`).
