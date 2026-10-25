@@ -213,6 +213,92 @@ try {
   const markers = await devtools.evaluate("document.querySelectorAll('.leaflet-interactive').length");
   check("all stations are on the map", markers >= 222, `got ${markers}`);
 
+  console.log("\ntrack and elevation logic");
+  // Pure functions from the browser modules, exercised in the same engine the
+  // page uses. These cover snapping, the elevation profile and the state
+  // migration without needing a network or a particular map view.
+  const logic = await devtools.evaluate(`
+    (async () => {
+      const track = await import('/js/track.js');
+      const profileModule = await import('/js/profile.js');
+      const store = await import('/js/store.js');
+      const line = [
+        { lat: 51.8000, lon: 10.6000 },
+        { lat: 51.8000, lon: 10.6500 },
+        { lat: 51.8000, lon: 10.7000 },
+      ];
+      const nearest = track.nearestPointOnTrack(line, { lat: 51.8004, lon: 10.6250 });
+      const snapped = track.snapToTrack(line, { lat: 51.8004, lon: 10.6250 }, 100);
+      const far = track.snapToTrack(line, { lat: 51.9000, lon: 11.0000 }, 100);
+      const elevation = track.buildElevationProfile([
+        { lat: 51.80, lon: 10.600, ele: 500 },
+        { lat: 51.81, lon: 10.610, ele: 560 },
+        { lat: 51.82, lon: 10.620, ele: 540 },
+        { lat: 51.83, lon: 10.630, ele: 600 },
+        { lat: 51.84, lon: 10.640, ele: 520 },
+      ]);
+      const container = document.createElement('div');
+      const drawn = profileModule.renderElevationProfile(container, elevation);
+      const withoutElevation = track.buildElevationProfile(line);
+      const migrated = store.migrateState({ settings: { maxDayKm: 12, maxDays: 3 } });
+      const roundtrip = store.parseImport(
+        store.serializeExport({ selection: [1], stamped: [2, 3], settings: { maxTourKm: 18 } }),
+      );
+      return {
+        nearestLat: nearest.lat,
+        nearestLon: nearest.lon,
+        nearestDistance: nearest.distanceM,
+        snapped: snapped.snapped,
+        farSnapped: far.snapped,
+        ascent: elevation?.ascentM ?? 0,
+        descent: elevation?.descentM ?? 0,
+        samples: elevation?.samples.length ?? 0,
+        drawn,
+        paths: container.querySelectorAll('path').length,
+        withoutElevation,
+        maxTourKm: migrated.settings.maxTourKm,
+        hasMaxDays: 'maxDays' in migrated.settings,
+        migratedStamped: migrated.stamped.length,
+        roundtripStamped: roundtrip.stamped.join(','),
+        roundtripSelected: roundtrip.selection.join(','),
+      };
+    })()
+  `);
+  check(
+    "a point is projected onto the nearest track segment",
+    Math.abs(logic.nearestLat - 51.8) < 1e-6 &&
+      Math.abs(logic.nearestLon - 10.625) < 1e-6 &&
+      logic.nearestDistance > 0,
+    JSON.stringify(logic),
+  );
+  check("snapping keeps a nearby point on the track", logic.snapped === true, JSON.stringify(logic));
+  check("snapping leaves a far point alone", logic.farSnapped === false, JSON.stringify(logic));
+  check(
+    "the elevation profile reports ascent and descent",
+    logic.ascent > 20 && logic.descent > 5 && logic.samples >= 2,
+    JSON.stringify(logic),
+  );
+  check(
+    "a route without elevation yields no profile",
+    logic.withoutElevation === null,
+    JSON.stringify(logic),
+  );
+  check(
+    "the elevation profile renders as SVG",
+    logic.drawn === true && logic.paths >= 2,
+    JSON.stringify(logic),
+  );
+  check(
+    "old saved state migrates to the day-tour shape",
+    logic.maxTourKm === 12 && logic.hasMaxDays === false && logic.migratedStamped === 0,
+    JSON.stringify(logic),
+  );
+  check(
+    "data export and import keep selection and stamp pass",
+    logic.roundtripStamped === "2,3" && logic.roundtripSelected === "1",
+    JSON.stringify(logic),
+  );
+
   console.log("\nselection");
   await devtools.evaluate(`
     (() => {
@@ -226,6 +312,51 @@ try {
   );
   check("clicking rows selects stations", selected === "5", `got "${selected}"`);
 
+  console.log("\nstamp pass");
+  await devtools.evaluate("document.querySelector('.stamp-toggle').click()");
+  const stamped = await devtools.evaluate(
+    `(() => ({
+      count: document.querySelector('#stamped-count')?.textContent ?? '',
+      pressed: document.querySelector('.stamp-toggle')?.getAttribute('aria-pressed'),
+      now: document.querySelector('#stamp-progress')?.getAttribute('aria-valuenow'),
+      rows: document.querySelectorAll('.stamp-item').length,
+    }))()`,
+  );
+  check("marking a station counts it in the stamp pass", stamped.count === "1", JSON.stringify(stamped));
+  check(
+    "the stamped toggle reports its state",
+    stamped.pressed === "true" && stamped.now === "1",
+    JSON.stringify(stamped),
+  );
+
+  // The filter is the practical way to plan for the remaining stamps.
+  await devtools.evaluate(`
+    (() => {
+      const box = document.querySelector('#only-unstamped');
+      box.checked = true;
+      box.dispatchEvent(new Event('change'));
+    })()
+  `);
+  const hidden = await devtools.evaluate("document.querySelectorAll('.stamp-item').length");
+  check("the unstamped filter hides stamped stations", hidden === 221, `got ${hidden}`);
+  await devtools.evaluate(`
+    (() => {
+      const box = document.querySelector('#only-unstamped');
+      box.checked = false;
+      box.dispatchEvent(new Event('change'));
+    })()
+  `);
+  const shown = await devtools.evaluate("document.querySelectorAll('.stamp-item').length");
+  check("clearing the filter shows every station", shown === 222, `got ${shown}`);
+
+  await devtools.evaluate("document.querySelector('#stamp-selection').click()");
+  const bulk = await devtools.evaluate("document.querySelector('#stamped-count')?.textContent ?? ''");
+  check("the selection can be marked as stamped at once", bulk === "5", `got "${bulk}"`);
+  await devtools.evaluate("document.querySelector('#unstamp-selection').click()");
+  await devtools.evaluate("document.querySelector('.stamp-toggle').click()");
+  const left = await devtools.evaluate("document.querySelector('#stamped-count')?.textContent ?? ''");
+  check("stamp marks can be removed again", left === "1", `got "${left}"`);
+
   console.log("\nplanning");
   await devtools.evaluate("document.querySelector('#use-first-stamp').click()");
   const startLabel = await devtools.evaluate(
@@ -233,15 +364,27 @@ try {
   );
   check("start point is set", startLabel.includes(","), `got "${startLabel}"`);
 
+  const hasDayInput = await devtools.evaluate("document.querySelector('#max-days') !== null");
+  check("multi-day planning is gone", hasDayInput === false, "a max-days input still exists");
+
   await devtools.evaluate("document.querySelector('#plan').click()");
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
   const summary = await devtools.evaluate(
     "document.querySelector('#plan-summary')?.textContent ?? ''",
   );
-  const days = await devtools.evaluate("document.querySelectorAll('.day-card').length");
-  check("a plan is produced", days >= 1, `got ${days} day cards`);
-  check("summary shows stamps and distance", /Stempel/.test(summary) && /km/.test(summary), `got "${summary}"`);
+  const stops = await devtools.evaluate("document.querySelectorAll('.tour-stops__item').length");
+  check("a day tour is produced", stops >= 5, `got ${stops} stops`);
+  check(
+    "summary shows stamps and distance",
+    /Stempel/.test(summary) && /km/.test(summary),
+    `got "${summary}"`,
+  );
+  check(
+    "the tour is one day, not a day list",
+    (await devtools.evaluate("document.querySelectorAll('.day-card').length")) === 0,
+    "day cards are still rendered",
+  );
 
   const polyline = await devtools.evaluate(
     "document.querySelectorAll('path.leaflet-interactive').length",
@@ -261,21 +404,161 @@ try {
     `(() => ({
       summary: document.querySelector('#plan-summary')?.textContent ?? '',
       status: document.querySelector('#plan-status')?.textContent ?? '',
-      durations: document.querySelectorAll('.day-card__head span:nth-child(2)').length,
+      elevationHidden: document.querySelector('#elevation-panel')?.hidden ?? true,
+      elevationPaths: document.querySelectorAll('.elevation-chart__svg path').length,
     }))()`,
     (value) => /geroutet/.test(value.summary) || /geschätzt|nicht erreichbar|fehlgeschlagen|abgebrochen/i.test(value.status),
     EXPECT_NETWORK ? 45000 : 30000,
   );
   if (EXPECT_NETWORK) {
     check("plan uses routed distances", /geroutet/.test(routing.summary), `summary "${routing.summary}", status "${routing.status}"`);
-    // Real routing also yields a walking time per day; an estimate has none.
-    check("day cards show a walking time", routing.durations > 0, `got ${routing.durations}`);
+    // Real routing also yields a walking time and elevation per point.
+    check("the routed tour shows a walking time", /Gehzeit/.test(routing.summary), `summary "${routing.summary}"`);
+    check(
+      "a routed tour shows an elevation profile",
+      routing.elevationHidden === false && routing.elevationPaths >= 2,
+      JSON.stringify(routing),
+    );
   } else {
     check(
       "routing reports its outcome instead of staying silent",
       /geroutet/.test(routing.summary) || routing.status.trim().length > 0,
       `summary "${routing.summary}", status "${routing.status}"`,
     );
+    // Depending on the network, this run may or may not reach BRouter. What
+    // must hold either way is that the profile is only shown for a route with
+    // real elevation data — never invented for an estimate.
+    if (/geroutet/.test(routing.summary)) {
+      check(
+        "a routed tour shows an elevation profile",
+        routing.elevationHidden === false && routing.elevationPaths >= 2,
+        JSON.stringify(routing),
+      );
+    } else {
+      check(
+        "an estimated tour shows no elevation profile",
+        routing.elevationHidden === true,
+        JSON.stringify(routing),
+      );
+    }
+  }
+
+  if (EXPECT_NETWORK) {
+    console.log("\ntrack editing");
+    await devtools.evaluate("document.querySelector('#add-point').click()");
+    const addMode = await devtools.evaluate(
+      "document.querySelector('#add-point')?.getAttribute('aria-pressed')",
+    );
+    check("add-point mode is visible", addMode === "true", `got "${addMode}"`);
+
+    // Click the middle of the map. The point is projected onto the current
+    // route, so its exact pixel does not matter as long as it is over the map.
+    await devtools.evaluate(`
+      (() => {
+        const map = document.querySelector('#map');
+        const rect = map.getBoundingClientRect();
+        map.dispatchEvent(new MouseEvent('click', {
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+          bubbles: true,
+        }));
+      })()
+    `);
+    const added = await poll(
+      devtools,
+      `(() => ({
+        via: document.querySelectorAll('.tour-stops__item--via').length,
+        handles: document.querySelectorAll('.track-handle').length,
+        summary: document.querySelector('#plan-summary')?.textContent ?? '',
+        status: document.querySelector('#plan-status')?.textContent ?? '',
+      }))()`,
+      (value) => value.via >= 1 || /fehlgeschlagen|nicht erreichbar|abgebrochen/i.test(value.status),
+      30000,
+    );
+    check("clicking the map adds an editable waypoint", added.via >= 1, JSON.stringify(added));
+    check("the waypoint has a draggable handle", added.handles >= 1, JSON.stringify(added));
+    check(
+      "the tour is routed again after the edit",
+      /geroutet/.test(added.summary),
+      JSON.stringify(added),
+    );
+
+    // Wait for the fresh route before dragging: a route response must not move
+    // the handle while the drag is in progress.
+    await poll(
+      devtools,
+      "document.querySelector('#plan-status')?.textContent ?? ''",
+      (value) => value.includes("Distanzen entlang"),
+      30000,
+    );
+
+    const beforeDrag = await devtools.evaluate(
+      "document.querySelector('.tour-stops__item--via .tour-stops__label')?.textContent ?? ''",
+    );
+    const handle = await devtools.evaluate(`
+      (() => {
+        const el = document.querySelector('.track-handle');
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()
+    `);
+    check("the waypoint handle is placed on the map", handle !== null, JSON.stringify(handle));
+    if (handle) {
+      // Trusted input events, unlike a synthetic PointerEvent: Leaflet's drag
+      // implementation only follows real pointer input.
+      await devtools.send("Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x: handle.x,
+        y: handle.y,
+        button: "left",
+        buttons: 1,
+        clickCount: 1,
+      });
+      await devtools.send("Input.dispatchMouseEvent", {
+        type: "mouseMoved",
+        x: handle.x + 80,
+        y: handle.y + 60,
+        button: "left",
+        buttons: 1,
+      });
+      await devtools.send("Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x: handle.x + 80,
+        y: handle.y + 60,
+        button: "left",
+        buttons: 0,
+        clickCount: 1,
+      });
+    }
+    const dragged = await poll(
+      devtools,
+      `(() => ({
+        label: document.querySelector('.tour-stops__item--via .tour-stops__label')?.textContent ?? '',
+        status: document.querySelector('#track-status')?.textContent ?? '',
+        handles: document.querySelectorAll('.track-handle').length,
+      }))()`,
+      (value) =>
+        value.label !== beforeDrag || /verschoben|eingerastet/i.test(value.status),
+      30000,
+    );
+    check(
+      "dragging a waypoint moves it and keeps the handle",
+      dragged.label !== beforeDrag && dragged.handles === 1,
+      JSON.stringify({ beforeDrag, dragged }),
+    );
+
+    await devtools.evaluate("document.querySelector('[data-waypoint-index]').click()");
+    const removed = await poll(
+      devtools,
+      `(() => ({
+        via: document.querySelectorAll('.tour-stops__item--via').length,
+        handles: document.querySelectorAll('.track-handle').length,
+      }))()`,
+      (value) => value.via === 0,
+      30000,
+    );
+    check("a waypoint can be removed again", removed.via === 0 && removed.handles === 0, JSON.stringify(removed));
   }
 
   console.log("\nparking from OpenStreetMap");
@@ -337,6 +620,19 @@ try {
     })()
   `);
   check("web app manifest is served", manifest?.name?.includes("Harzer"), JSON.stringify(manifest?.name));
+
+  console.log("\npersistence");
+  // The debounced IndexedDB write must have landed before the reload.
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  await devtools.send("Page.reload", { ignoreCache: true });
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  const persisted = await poll(
+    devtools,
+    "document.querySelector('#stamped-count')?.textContent ?? ''",
+    (value) => value.trim() !== "",
+    15000,
+  );
+  check("the stamp pass survives a reload", persisted === "1", `got "${persisted}"`);
 
   // A missing vendored asset (Leaflet's marker images, for example) does not
   // throw: it degrades into broken-image alt text on the map. Only the network

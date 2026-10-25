@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Tour construction and improvement for multi-day stamp collecting hikes.
+//! Tour construction and improvement for single-day stamp collecting hikes.
 //!
 //! # Shape of the problem
 //!
-//! A hike starts and ends at the same car park and visits a set of stamp
-//! stations. A multi-day plan is therefore a sequence of closed days, each of
-//! which is an open path from the car park back to itself. This is a vehicle
-//! routing problem with a working-time (distance) limit per day, which is
-//! NP-hard. The planner uses:
+//! A day hike starts and ends at the same car park and visits a set of stamp
+//! stations. The plan is therefore one closed tour: an open path from the car
+//! park through the chosen stations and back. The planner uses:
 //!
 //! 1. **Distance matrix** over the car park and the chosen stations. The caller
 //!    supplies it, typically from a real routing service; when it does not, the
@@ -18,11 +16,10 @@
 //!    ties on station number so the result is reproducible.
 //! 3. **2-opt improvement** on the open path with the car park pinned at the
 //!    start. This removes the most visible inefficiencies at negligible cost.
-//! 4. **Greedy day splitting** under the per-day distance limit.
 //!
 //! The result is deterministic, explainable, and never silently drops a chosen
-//! station: when a constraint cannot be met, the itinerary reports a warning
-//! instead of pretending otherwise.
+//! station: when the tour exceeds the configured distance limit, it is returned
+//! and flagged instead of being shortened or split into several days.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -30,7 +27,7 @@
 mod error;
 mod matrix;
 mod order;
-mod split;
+mod tour;
 
 #[cfg(test)]
 mod test_support;
@@ -38,27 +35,21 @@ mod test_support;
 pub use error::{OptimizerError, OptimizerWarning};
 pub use matrix::DistanceMatrix;
 pub use order::optimize_order;
-pub use split::days_needed;
+pub use tour::{build_tour, round_trip_m};
 
 use geo_engine::LatLon;
 use serde::{Deserialize, Serialize};
 use stamp_core::{Stamp, StampId};
 
-use crate::split::{build_days, day_round_trip_m};
-
-/// Default upper bound for one hiking day, in metres.
-pub const DEFAULT_MAX_DAY_DISTANCE_M: f64 = 20_000.0;
-
-/// Default ceiling on the number of days a plan may span.
-pub const DEFAULT_MAX_DAYS: usize = 14;
+/// Default upper bound for one hike, in metres.
+pub const DEFAULT_MAX_TOUR_DISTANCE_M: f64 = 20_000.0;
 
 /// Planning limits.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct OptimizerOptions {
-    /// Maximum walking distance per day in metres, including the return leg.
-    pub max_day_distance_m: f64,
-    /// Maximum number of days the itinerary may span.
-    pub max_days: usize,
+    /// Maximum walking distance of the whole tour in metres, including the
+    /// return leg.
+    pub max_tour_distance_m: f64,
     /// How many 2-opt improvement passes to attempt.
     pub two_opt_passes: usize,
 }
@@ -66,8 +57,7 @@ pub struct OptimizerOptions {
 impl Default for OptimizerOptions {
     fn default() -> Self {
         Self {
-            max_day_distance_m: DEFAULT_MAX_DAY_DISTANCE_M,
-            max_days: DEFAULT_MAX_DAYS,
+            max_tour_distance_m: DEFAULT_MAX_TOUR_DISTANCE_M,
             two_opt_passes: 8,
         }
     }
@@ -76,17 +66,12 @@ impl Default for OptimizerOptions {
 impl OptimizerOptions {
     /// Validates the options.
     pub fn validate(&self) -> Result<(), OptimizerError> {
-        if !self.max_day_distance_m.is_finite() || self.max_day_distance_m <= 0.0 {
+        if !self.max_tour_distance_m.is_finite() || self.max_tour_distance_m <= 0.0 {
             return Err(OptimizerError::InvalidOptions {
                 message: format!(
-                    "max_day_distance_m must be positive and finite, got {}",
-                    self.max_day_distance_m
+                    "max_tour_distance_m must be positive and finite, got {}",
+                    self.max_tour_distance_m
                 ),
-            });
-        }
-        if self.max_days == 0 {
-            return Err(OptimizerError::InvalidOptions {
-                message: "max_days must be at least 1".to_string(),
             });
         }
         Ok(())
@@ -97,7 +82,7 @@ impl OptimizerOptions {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "stamp")]
 pub enum LegNode {
-    /// The day's car park, where every day starts and ends.
+    /// The car park, where the tour starts and ends.
     Parking,
     /// A stamp station.
     Stamp(StampId),
@@ -126,50 +111,29 @@ pub struct Leg {
     pub distance_m: f64,
 }
 
-/// One hiking day.
+/// The finished day tour.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DayPlan {
-    /// One-based day number, for display.
-    pub day: usize,
+pub struct Tour {
+    /// Position the tour starts and ends at.
+    pub start: LatLon,
     /// Legs in walking order, starting and ending at the car park.
     pub legs: Vec<Leg>,
-    /// Total distance of the day in metres, including the return leg.
+    /// Total distance of the tour in metres, including the return leg.
     pub distance_m: f64,
-    /// Stations visited that day, in walking order.
-    pub stamps: Vec<StampId>,
-    /// Whether this day exceeds the configured limit because a single station
-    /// cannot be reached within it.
-    pub oversized: bool,
-}
-
-/// The finished plan.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Itinerary {
-    /// Days in order.
-    pub days: Vec<DayPlan>,
-    /// Sum of all day distances in metres.
-    pub total_distance_m: f64,
-    /// Every visited station, in visiting order across days.
+    /// Stations visited, in walking order.
     pub stamps_visited: Vec<StampId>,
-    /// Position the plan starts and ends at each day.
-    pub start: LatLon,
     /// Name of the distance source, for attribution.
     pub provider_name: String,
     /// True when distances are estimates rather than routed results.
     pub estimated: bool,
+    /// Whether the tour exceeds the configured limit.
+    pub oversized: bool,
     /// Constraints that could not be satisfied.
     pub warnings: Vec<OptimizerWarning>,
 }
 
-impl Itinerary {
-    /// Number of days in the plan.
-    #[must_use]
-    pub fn day_count(&self) -> usize {
-        self.days.len()
-    }
-
+impl Tour {
     /// Number of stations visited.
     #[must_use]
     pub fn stamp_count(&self) -> usize {
@@ -178,15 +142,15 @@ impl Itinerary {
 
     /// Total distance in kilometres, for display.
     #[must_use]
-    pub fn total_distance_km(&self) -> f64 {
-        self.total_distance_m / 1000.0
+    pub fn distance_km(&self) -> f64 {
+        self.distance_m / 1000.0
     }
 }
 
 /// Input for [`plan`].
 #[derive(Debug, Clone)]
 pub struct PlanRequest {
-    /// Car park where every day starts and ends.
+    /// Car park where the tour starts and ends.
     pub start: LatLon,
     /// Stations to visit; order is irrelevant, ids must be unique.
     pub stamps: Vec<Stamp>,
@@ -200,15 +164,15 @@ pub struct PlanRequest {
     pub provider_name: String,
 }
 
-/// Builds an itinerary from a request.
-pub fn plan(request: PlanRequest) -> Result<Itinerary, OptimizerError> {
+/// Builds a day tour from a request.
+pub fn plan(request: PlanRequest) -> Result<Tour, OptimizerError> {
     request.options.validate()?;
     if request.stamps.is_empty() {
         return Err(OptimizerError::NoStamps);
     }
 
     // Reject duplicate stations: visiting the same box twice would produce a
-    // plan that looks valid but wastes a day.
+    // plan that looks valid but wastes part of the day.
     let mut seen = std::collections::BTreeSet::new();
     for stamp in &request.stamps {
         if !seen.insert(stamp.id) {
@@ -230,32 +194,27 @@ pub fn plan(request: PlanRequest) -> Result<Itinerary, OptimizerError> {
     };
 
     let order = optimize_order(&matrix, request.options.two_opt_passes);
-    let (days, warnings) = build_days(&order, &matrix, &request.stamps, request.options);
+    let (legs, distance_m, stamps_visited) = build_tour(&order, &matrix, &request.stamps);
 
-    let total_distance_m = days.iter().map(|day| day.distance_m).sum();
-    let stamps_visited = days
-        .iter()
-        .flat_map(|day| day.stamps.iter().copied())
-        .collect();
+    let oversized = distance_m > request.options.max_tour_distance_m + 1e-9;
+    let mut warnings = Vec::new();
+    if oversized {
+        warnings.push(OptimizerWarning::OversizedTour {
+            distance_m,
+            limit_m: request.options.max_tour_distance_m,
+        });
+    }
 
-    Ok(Itinerary {
-        days,
-        total_distance_m,
-        stamps_visited,
+    Ok(Tour {
         start: request.start,
+        legs,
+        distance_m,
+        stamps_visited,
         provider_name: request.provider_name,
         estimated,
+        oversized,
         warnings,
     })
-}
-
-/// Computes the round-trip distance for a set of stations from a car park.
-///
-/// Exposed for previews ("this selection needs about 14 km per day") without
-/// building a full itinerary.
-#[must_use]
-pub fn round_trip_m(matrix: &DistanceMatrix, stamp_indices: &[usize]) -> f64 {
-    day_round_trip_m(matrix, stamp_indices)
 }
 
 #[cfg(test)]
@@ -305,7 +264,7 @@ mod tests {
     #[test]
     fn invalid_options_are_rejected() {
         let options = OptimizerOptions {
-            max_day_distance_m: 0.0,
+            max_tour_distance_m: 0.0,
             ..Default::default()
         };
         assert!(matches!(
@@ -318,33 +277,28 @@ mod tests {
     fn single_station_round_trip_has_two_legs() {
         let station = stamp(1);
         let start = station.position;
-        let itinerary = plan(PlanRequest {
+        let tour = plan(PlanRequest {
             start,
             stamps: vec![station.clone()],
             matrix: None,
             options: OptimizerOptions::default(),
             provider_name: "test".to_string(),
         })
-        .expect("itinerary");
+        .expect("tour");
 
-        assert_eq!(itinerary.day_count(), 1);
-        assert_eq!(itinerary.stamp_count(), 1);
-        let day = &itinerary.days[0];
-        assert_eq!(day.legs.len(), 2);
-        assert_eq!(day.legs[0].from, LegNode::Parking);
-        assert_eq!(day.legs[1].to, LegNode::Parking);
-        assert!(day.distance_m.abs() < 1e-6, "zero-length round trip");
+        assert_eq!(tour.stamp_count(), 1);
+        assert_eq!(tour.legs.len(), 2);
+        assert_eq!(tour.legs[0].from, LegNode::Parking);
+        assert_eq!(tour.legs[1].to, LegNode::Parking);
+        assert!(tour.distance_m.abs() < 1e-6, "zero-length round trip");
+        assert!(!tour.oversized);
     }
 
     #[test]
     fn every_station_is_visited_exactly_once() {
         let numbers = [1_u16, 2, 3, 4, 5, 9, 10, 20];
-        let itinerary = plan(request(&numbers, OptimizerOptions::default())).expect("itinerary");
-        let mut visited: Vec<u16> = itinerary
-            .stamps_visited
-            .iter()
-            .map(|id| id.number())
-            .collect();
+        let tour = plan(request(&numbers, OptimizerOptions::default())).expect("tour");
+        let mut visited: Vec<u16> = tour.stamps_visited.iter().map(|id| id.number()).collect();
         visited.sort_unstable();
         assert_eq!(visited, numbers.to_vec());
     }
@@ -358,92 +312,67 @@ mod tests {
     }
 
     #[test]
-    fn day_limit_is_respected_when_possible() {
-        let options = OptimizerOptions {
-            max_day_distance_m: 6_000.0,
-            max_days: 99,
-            two_opt_passes: 8,
-        };
+    fn every_station_lies_on_the_tour() {
         let numbers: Vec<u16> = (1..=10).collect();
-        let itinerary = plan(request(&numbers, options)).expect("itinerary");
-        for day in &itinerary.days {
+        let tour = plan(request(&numbers, OptimizerOptions::default())).expect("tour");
+        assert_eq!(tour.stamp_count(), numbers.len());
+        for id in &tour.stamps_visited {
             assert!(
-                day.distance_m <= options.max_day_distance_m + 1e-6 || day.oversized,
-                "day {} is {} m without being flagged",
-                day.day,
-                day.distance_m
+                tour.legs.iter().any(|leg| leg.to == LegNode::Stamp(*id)),
+                "station {id} is not reached by any leg"
             );
         }
     }
 
     #[test]
-    fn each_day_starts_and_ends_at_the_car_park() {
-        let options = OptimizerOptions {
-            max_day_distance_m: 5_000.0,
-            max_days: 99,
-            two_opt_passes: 4,
-        };
+    fn tour_starts_and_ends_at_the_car_park() {
         let numbers: Vec<u16> = (1..=8).collect();
-        let itinerary = plan(request(&numbers, options)).expect("itinerary");
-        for day in &itinerary.days {
-            assert_eq!(day.legs.first().map(|leg| leg.from), Some(LegNode::Parking));
-            assert_eq!(day.legs.last().map(|leg| leg.to), Some(LegNode::Parking));
-        }
+        let tour = plan(request(&numbers, OptimizerOptions::default())).expect("tour");
+        assert_eq!(
+            tour.legs.first().map(|leg| leg.from),
+            Some(LegNode::Parking)
+        );
+        assert_eq!(tour.legs.last().map(|leg| leg.to), Some(LegNode::Parking));
+        assert_eq!(tour.legs.len(), tour.stamp_count() + 1);
     }
 
     #[test]
-    fn day_numbers_are_one_based_and_contiguous() {
-        let itinerary = plan(request(&[1, 2, 3], OptimizerOptions::default())).expect("itinerary");
-        let numbers: Vec<usize> = itinerary.days.iter().map(|day| day.day).collect();
-        assert_eq!(numbers, (1..=itinerary.days.len()).collect::<Vec<usize>>());
-    }
-
-    #[test]
-    fn too_many_days_produces_a_warning_not_a_lost_station() {
+    fn a_tour_above_the_limit_is_flagged_but_keeps_every_station() {
         let options = OptimizerOptions {
-            max_day_distance_m: 1_000.0,
-            max_days: 1,
-            two_opt_passes: 2,
+            max_tour_distance_m: 100.0,
+            two_opt_passes: 1,
         };
-        let numbers: Vec<u16> = (1..=6).collect();
-        let itinerary = plan(request(&numbers, options)).expect("itinerary");
-        assert_eq!(itinerary.stamp_count(), 6, "no station may be dropped");
-        assert!(itinerary.days.len() > options.max_days);
+        let tour = plan(request(&[1, 222], options)).expect("tour");
+        assert_eq!(tour.stamp_count(), 2, "no station may be dropped");
+        assert!(tour.oversized);
         assert!(
-            itinerary
-                .warnings
+            tour.warnings
                 .iter()
-                .any(|warning| matches!(warning, OptimizerWarning::DayLimitExceeded { .. })),
-            "expected a day-limit warning, got {:?}",
-            itinerary.warnings
+                .any(|warning| matches!(warning, OptimizerWarning::OversizedTour { .. })),
+            "expected an oversized-tour warning, got {:?}",
+            tour.warnings
         );
     }
 
     #[test]
-    fn unreachable_station_is_flagged_as_oversized() {
+    fn a_large_selection_is_not_split_into_days() {
+        // The product plans day tours only. A selection that cannot be walked in
+        // one day is returned as one oversized tour with every station, never as
+        // several days.
         let options = OptimizerOptions {
-            max_day_distance_m: 100.0,
-            max_days: 10,
-            two_opt_passes: 1,
+            max_tour_distance_m: 1_000.0,
+            two_opt_passes: 2,
         };
-        // HWN001 and HWN222 are roughly 50 km apart. The plan starts at HWN001,
-        // so only the HWN222 day can be oversized - and it must be flagged
-        // rather than silently shortened.
-        let itinerary = plan(request(&[1, 222], options)).expect("itinerary");
-        let far_day = itinerary
-            .days
-            .iter()
-            .find(|day| day.stamps.contains(&StampId::new(222).expect("id")))
-            .expect("a day must visit HWN222");
-        assert!(far_day.oversized, "the far station day must be flagged");
-        assert!(
-            itinerary.warnings.iter().any(|warning| matches!(
-                warning,
-                OptimizerWarning::OversizedDay { stamp, .. }
-                    if stamp.number() == 222
-            )),
-            "expected an oversized-day warning for HWN222, got {:?}",
-            itinerary.warnings
+        let numbers: Vec<u16> = (1..=6).collect();
+        let tour = plan(request(&numbers, options)).expect("tour");
+        assert_eq!(tour.stamp_count(), 6);
+        assert!(tour.oversized);
+        assert_eq!(
+            tour.warnings
+                .iter()
+                .filter(|warning| matches!(warning, OptimizerWarning::OversizedTour { .. }))
+                .count(),
+            1
         );
     }
 
@@ -458,16 +387,17 @@ mod tests {
             0.0, 0.0, 1_000.0, //
             1_000.0, 1_000.0, 0.0,
         ];
-        let itinerary = plan(PlanRequest {
+        let tour = plan(PlanRequest {
             start,
             stamps: stations,
             matrix: Some(matrix),
             options: OptimizerOptions::default(),
             provider_name: "test-matrix".to_string(),
         })
-        .expect("itinerary");
-        assert_eq!(itinerary.provider_name, "test-matrix");
-        assert!((itinerary.total_distance_m - 2_000.0).abs() < 1e-6);
+        .expect("tour");
+        assert_eq!(tour.provider_name, "test-matrix");
+        assert!(!tour.estimated);
+        assert!((tour.distance_m - 2_000.0).abs() < 1e-6);
     }
 
     #[test]
@@ -500,20 +430,10 @@ mod tests {
     }
 
     #[test]
-    fn total_distance_equals_the_sum_of_days() {
+    fn distance_equals_the_sum_of_legs() {
         let numbers: Vec<u16> = (1..=12).collect();
-        let itinerary = plan(request(&numbers, OptimizerOptions::default())).expect("itinerary");
-        let sum: f64 = itinerary.days.iter().map(|day| day.distance_m).sum();
-        assert!((itinerary.total_distance_m - sum).abs() < 1e-6);
-    }
-
-    #[test]
-    fn leg_distances_sum_to_the_day_distance() {
-        let numbers: Vec<u16> = (1..=6).collect();
-        let itinerary = plan(request(&numbers, OptimizerOptions::default())).expect("itinerary");
-        for day in &itinerary.days {
-            let sum: f64 = day.legs.iter().map(|leg| leg.distance_m).sum();
-            assert!((sum - day.distance_m).abs() < 1e-6);
-        }
+        let tour = plan(request(&numbers, OptimizerOptions::default())).expect("tour");
+        let sum: f64 = tour.legs.iter().map(|leg| leg.distance_m).sum();
+        assert!((tour.distance_m - sum).abs() < 1e-6);
     }
 }

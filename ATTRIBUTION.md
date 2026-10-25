@@ -72,7 +72,7 @@ eingebunden.
 | Software | BRouter, © Armin Falkner und Mitwirkende, **MIT-Lizenz** |
 | Datengrundlage | OpenStreetMap, **ODbL 1.0** |
 | Bezug | <https://brouter.de/brouter/> |
-| Aufrufe | eine Anfrage pro Tag, nur beim Berechnen einer Tour |
+| Aufrufe | eine Anfrage pro Tagestour, nur beim Berechnen einer Tour |
 
 Wer den öffentlichen Dienst in größerem Umfang nutzt, sollte eine eigene Instanz
 betreiben; die Software ist frei. Die Projektkonfiguration lässt das über

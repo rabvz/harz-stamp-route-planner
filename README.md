@@ -1,10 +1,11 @@
 # Harzer Wandernadel Tourenplaner
 
 Ein Tourenplaner für die **Harzer Wandernadel**: Stempelstellen auswählen,
-Wanderparkplätze in der Nähe finden, Tage einteilen und die Tour **entlang
-echter Wanderwege** berechnen — als GPX mit Weggeometrie exportierbar. Die
-Berechnung läuft im Browser als Rust/WebAssembly-Modul; es gibt keinen Server,
-kein Konto und keine Telemetrie.
+Wanderparkplätze in der Nähe finden, eine Tagestour **entlang echter Wanderwege**
+berechnen, den Track mit eigenen Wegpunkten anpassen und als GPX mit
+Höhenprofil exportieren. Ein Stempelpass hält fest, welche der 222 Stempel
+schon gesammelt sind. Die Berechnung läuft im Browser als
+Rust/WebAssembly-Modul; es gibt keinen Server, kein Konto und keine Telemetrie.
 
 [![CI](https://github.com/rabvz/harz-stamp-route-planner/actions/workflows/ci.yml/badge.svg)](https://github.com/rabvz/harz-stamp-route-planner/actions/workflows/ci.yml)
 [![Lizenz: MIT OR Apache-2.0](https://img.shields.io/badge/Lizenz-MIT%20OR%20Apache--2.0-blue.svg)](#lizenz)
@@ -13,7 +14,7 @@ kein Konto und keine Telemetrie.
 > Wanderparkplätze über OpenStreetMap und exportiert GPX samt Track. Was noch
 > fehlt, steht ungeschönt unter [Grenzen](#grenzen-und-offene-punkte).
 
-![Screenshot des Planers: geroutete Tour entlang von Wanderwegen mit Tagesplanung](docs/images/screenshot.png)
+![Screenshot des Planers: geroutete Tagestour entlang von Wanderwegen mit Höhenprofil und Stempelpass](docs/images/screenshot.png)
 
 ## Funktionen
 
@@ -22,22 +23,27 @@ kein Konto und keine Telemetrie.
 | 222 Stempelstellen mit Koordinaten | **fertig** | aus der amtlichen GPX-Datei, Stand 23.04.2025 |
 | Interaktive Karte mit Auswahl | **fertig** | Klick auf Marker oder Liste |
 | Suche und Filter | **fertig** | nach Name, Ort und HWN-Nummer |
+| **Stempelpass** | **fertig** | Stempel als „bereits gestempelt“ markieren, Fortschritt x/222, Filter auf ungestempelte |
 | **Routing entlang von Wanderwegen** | **fertig** | BRouter, Profil `hiking-beta`, ohne Schlüssel |
 | **Wanderparkplätze aus OpenStreetMap** | **fertig** | Overpass-Abfrage im Umkreis, nach erreichbaren Stempeln sortiert |
 | Automatische Gruppierung | **fertig** | deterministisch, mit Durchmesser- und Stempel-Limit |
 | Tourenoptimierung | **fertig** | Nearest-Neighbour + 2-opt, danach echte Wege |
-| Tageseinteilung mit Nachjustierung | **fertig** | Tagesgrenzen werden nach dem Routing an echte Distanzen angepasst |
-| GPX-Export (Wegpunkte und Track) | **fertig** | GPX 1.1, inklusive Weggeometrie |
+| **Tagestour** | **fertig** | eine Tour pro Planung, mit Streckenlimit und Warnung statt stillem Kürzen |
+| **Track bearbeiten** | **fertig** | Wegpunkte setzen, ziehen (Einrasten auf der Weggeometrie) und entfernen; Route wird neu berechnet |
+| **Höhenprofil** | **fertig** | aus der Höhe der BRouter-Geometrie, mit Auf- und Abstieg |
+| GPX-Export (Wegpunkte und Track) | **fertig** | GPX 1.1, inklusive Weggeometrie und Höhe je Trackpunkt |
 | GPX-Import | **fertig** | ordnet `HWNnnn`-Namen Stempelstellen zu |
 | Offline-Bedienung (PWA) | **eingeschränkt** | Oberfläche und Rechenkern ja; Karte und Routing nein |
-| Persönliche Daten lokal | **fertig** | IndexedDB, Export und Import als JSON |
+| Persönliche Daten lokal | **fertig** | IndexedDB, Import und Export als JSON; Auswahl, Stempelpass und Einstellungen |
 
 ## Live-Demo
 
-Geplant unter <https://rabvz.github.io/harz-stamp-route-planner/>. Der
-Deployment-Workflow (`.github/workflows/deploy-pages.yml`) baut die Seite bei
-jedem Push auf `main`; solange GitHub Pages im Repository nicht aktiviert ist,
-ist die Adresse nicht erreichbar.
+<https://rabvz.github.io/harz-stamp-route-planner/>
+
+Der Deployment-Workflow (`.github/workflows/deploy-pages.yml`) baut die Seite bei
+jedem Push auf `main`; GitHub Pages ist aktiviert. `main` ist durch eine
+Branch-Protection geschützt: Änderungen laufen über Pull Requests, Force-Pushes
+und Löschen des Branches sind gesperrt.
 
 ## Schnellstart für Entwickler
 
@@ -57,7 +63,8 @@ einer werkseigenen Toolchain ohne Systemänderung, stehen in
 ### Browser-Smoke-Test
 
 `cargo test` prüft den Rust-Kern, nicht die Seite. Der folgende Test startet ein
-Headless-Chromium und prüft Start, Auswahl, Planung, Gruppierung und GPX-Export:
+Headless-Chromium und prüft Start, Auswahl, Stempelpass, Planung, Routing,
+Höhenprofil, Track-Bearbeitung, Gruppierung, GPX-Export und die Persistenz:
 
 ```bash
 cargo xtask web
@@ -77,7 +84,7 @@ crates/
   parking-search/    Ranking von Parkplatzkandidaten
   stamp-clustering/  Gruppierung in Tagestouren
   routing-client/    Provider-Abstraktion, GeoJSON-Parser, Cache
-  route-optimizer/   Reihenfolge, 2-opt, Tageseinteilung
+  route-optimizer/   Reihenfolge, 2-opt, Tagestour
   gpx/               GPX lesen und schreiben
   wasm-bindings/     JSON-ABI für den Browser
 xtask/               Entwickleraufgaben (ci, test, wasm, web, data, ...)
@@ -101,14 +108,13 @@ Vollständige Angaben: [ATTRIBUTION.md](ATTRIBUTION.md).
 
 ## Datenschutz
 
-Auswahl, Startpunkt und Einstellungen liegen ausschließlich im Browser
-(IndexedDB). Es gibt keine Konten, keine Analyse und keine Cookies. Nach außen
-gehen nur zwei Arten von Anfragen, beide optional beziehungsweise unvermeidlich
-für die Karte:
+Auswahl, Stempelpass, Startpunkt und Einstellungen liegen ausschließlich im
+Browser (IndexedDB). Es gibt keine Konten, keine Analyse und keine Cookies. Nach
+außen gehen nur drei Arten von Anfragen:
 
 1. Kartenkacheln an den konfigurierten Kachel-Server (Standard: OpenStreetMap).
-2. Anfragen an BRouter für die Wegführung — eine Anfrage pro Tag, sobald eine
-   Tour berechnet wird.
+2. Anfragen an BRouter für die Wegführung — eine Anfrage pro Tagestour und
+   eine weitere nach jeder Track-Bearbeitung.
 3. Eine Overpass-Abfrage für Wanderparkplätze — ausschließlich nach einem Klick
    auf „Parkplätze suchen“, nie beim Laden der Seite.
 
@@ -125,10 +131,17 @@ Diese Liste ist Teil der Dokumentation, nicht ein Zukunftsversprechen:
   GPX-Export enthält dann keinen Track. Ein eigener BRouter lässt sich in
   `web/js/config.js` eintragen.
 - **Optimierung auf Schätzung, Wege danach**: Die Reihenfolge der Stempel wird
-  auf der geschätzten Distanz berechnet, erst die fertigen Tage werden geroutet.
-  Echte Wege weichen davon ab; deshalb passt der Planer die Tagesgrenzen nach
-  dem Routing an (bis zu acht Durchläufe) und meldet Tage, die trotzdem über dem
-  Limit bleiben.
+  auf der geschätzten Distanz berechnet, erst die fertige Tagestour wird
+  geroutet. Echte Wege weichen davon ab; die Oberfläche zeigt dann die geroutete
+  Strecke. Eine Optimierung auf der echten Wegematrix ist offen.
+- **Nur Tagestouren**: Der Planer plant bewusst eine Tagestour. Passt die Auswahl
+  nicht in das Streckenlimit, bleibt sie vollständig und wird als zu lang
+  markiert; sie wird nicht heimlich auf mehrere Tage verteilt.
+- **Einrasten nur auf der berechneten Route**: Ein gezogener Wegpunkt rastet auf
+  der aktuellen Weggeometrie ein — die liegt auf OpenStreetMap-Wegen. Weitere
+  Wege in der Nähe werden nicht abgefragt; dafür bräuchte es eine Overpass-Abfrage
+  bei jedem Zug. Liegt der Punkt weiter als 120 m entfernt, bleibt er frei und
+  BRouter sucht selbst den nächsten Weg.
 - **Parkplätze aus OpenStreetMap**: „Parkplatz“ heißt dort „jemand hat eine
   Fläche eingetragen“, nicht „offizieller Wanderparkplatz der Harzer
   Wandernadel“. Zugangsbeschränkungen sind gefiltert, Öffnungszeiten und

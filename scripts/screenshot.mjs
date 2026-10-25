@@ -150,26 +150,47 @@ try {
     })()
   `);
 
-  // A generous day budget keeps the example tour realistic rather than showing
-  // a page full of limit warnings.
+  // A generous distance budget keeps the example tour realistic rather than
+  // showing a page full of limit warnings.
   await evaluate(`
     (() => {
-      const field = document.querySelector('#max-day-km');
-      field.value = '20';
+      const field = document.querySelector('#max-tour-km');
+      field.value = '30';
       field.dispatchEvent(new Event('change', { bubbles: true }));
       return field.value;
     })()
   `);
 
+  // Show the stamp pass in the image as well: two stations already collected.
+  await evaluate(`
+    (() => {
+      const toggles = [...document.querySelectorAll('.stamp-toggle')].slice(0, 2);
+      for (const toggle of toggles) toggle.click();
+      return toggles.length;
+    })()
+  `);
+
   // Real trailhead from OpenStreetMap, then a real routed tour: the image should
-  // show what the application actually does, not a staged state.
+  // show what the application actually does, not a staged state. The public
+  // Overpass instance is occasionally rate limited; the first stamp is an
+  // honest fallback start rather than an empty screenshot.
   await evaluate("document.querySelector('#find-parking').click()");
-  await waitUntil(
-    evaluate,
-    "document.querySelectorAll('.parking-item').length > 0",
-    40000,
+  let parked = false;
+  try {
+    await waitUntil(
+      evaluate,
+      "document.querySelectorAll('.parking-item').length > 0",
+      30000,
+    );
+    parked = true;
+  } catch {
+    // Fall through to the first stamp.
+  }
+  await evaluate(
+    parked
+      ? "document.querySelector('.parking-item')?.click()"
+      : "document.querySelector('#use-first-stamp').click()",
   );
-  await evaluate("document.querySelector('.parking-item')?.click()");
   await evaluate("document.querySelector('#plan').click()");
   await waitUntil(
     evaluate,
@@ -180,8 +201,8 @@ try {
 
   // Tooltips opened by clicking rows would sit on top of the tour.
   await evaluate("document.querySelectorAll('.leaflet-tooltip').forEach((el) => el.remove())");
-  // Scroll the sidebar so the routed plan is visible rather than the station
-  // list: the image should show the result, not just the input.
+  // Scroll the sidebar to the result so the image shows the computed tour and
+  // its elevation profile rather than only the station list.
   await evaluate(`
     (() => {
       const panel = document.querySelector('#result-panel');

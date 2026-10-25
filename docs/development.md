@@ -96,7 +96,7 @@ cargo xtask help
 | `cargo xtask check-gpx` | GPX-Rundlauf gegen echte und erzeugte Daten |
 | `cargo xtask wasm` | WASM-Modul nach `web/pkg/` bauen |
 | `cargo xtask web` | `dist/` bauen |
-| `cargo xtask serve` | `dist/` auf <http://127.0.0.1:8080> ausliefern |
+| `cargo xtask serve` | `dist/` auf <http://127.0.0.1:8080> ausliefern; mit `--port N` auf einem anderen Port |
 
 ### Warum `target/xtask-runner`
 

@@ -8,7 +8,49 @@ Alle nennenswerten Änderungen an diesem Projekt. Format nach
 
 ### Hinzugefügt
 
-- nichts offen
+- **Track-Bearbeitung.** Nach dem Routing lassen sich eigene Wegpunkte setzen,
+  auf der Karte ziehen und wieder entfernen. Ein gezogener Punkt rastet auf der
+  berechneten Weggeometrie ein, die auf OpenStreetMap-Wegen liegt; die Tour wird
+  nach jeder Änderung neu geroutet. Wegpunkte erscheinen in der Reihenfolge der
+  Tour und im GPX-Track.
+- **Stempelpass.** Jede Stempelstelle lässt sich als „bereits gestempelt“
+  markieren. Die Oberfläche zeigt den Fortschritt (x von 222), einen
+  Fortschrittsbalken, einen Filter auf ungestempelte Stellen und Aktionen für
+  die ganze Auswahl. Der Stand liegt in IndexedDB und im JSON-Export.
+- **Höhenprofil der Tagestour.** Auf- und Abstieg sowie die Profilkurve entstehen
+  aus der Höhe, die BRouter als dritte Koordinate liefert; gezeichnet als SVG
+  ohne Diagramm-Paket. Ohne Routing wird kein Profil erfunden.
+- **Höhe im GPX-Track.** Trackpunkte übernehmen die Höhe aus der Routing-Antwort;
+  der Export schreibt `<ele>` je Punkt.
+- **GitHub-Repository eingerichtet.** Beschreibung, Website, Themen, Discussions,
+  fehlende Labels und Branch-Protection für `main` (Pull Request verpflichtend,
+  Force-Push und Löschen gesperrt, auch für Admins). Offene Punkte sind als
+  Issues [#2](https://github.com/rabvz/harz-stamp-route-planner/issues/2) bis
+  [#15](https://github.com/rabvz/harz-stamp-route-planner/issues/15) erfasst.
+
+### Geändert
+
+- **Nur noch Tagestouren.** Die Mehrtagesplanung mit `maxDays`, Tagesaufteilung
+  und Nachjustierung der Tagesgrenzen ist entfernt. `route-optimizer` liefert
+  eine Tour mit Streckenlimit und Warnung; `plan` gibt `legs`, `distanceM`,
+  `stampsVisited` und `oversized` zurück, keine `days` mehr. Eine Auswahl, die
+  nicht in das Limit passt, bleibt vollständig und wird als zu lang markiert.
+- **Zustandsformat 2.** Auswahl, Stempelpass und Einstellungen werden mit
+  `version: 2` gespeichert. Gespeicherte Daten und Exporte der Version 1 werden
+  beim Laden übernommen; `maxDayKm` wird zu `maxTourKm`, `maxDays` entfällt.
+- **Oberfläche und Dokumentation** beschreiben den neuen Umfang: eine Tagestour,
+  Track-Bearbeitung, Höhenprofil und Stempelpass. Screenshot, README, Roadmap,
+  Entwicklungsstatus, Architektur, Routing-Design, Deployment, Attribution und
+  die Issue-Vorlagen sind angepasst.
+
+### Behoben
+
+- **Veralteter Plan nach geänderten Eingaben.** Ändert sich die Auswahl oder der
+  Startpunkt, wird eine bereits berechnete Tour verworfen und die Oberfläche
+  sagt, dass neu gerechnet werden muss, statt eine Tour zu zeigen, die nicht mehr
+  zur Auswahl passt.
+- **Track nur mit Höhe, wenn es Höhe gibt.** Eine geschätzte Tour zeigt kein
+  Höhenprofil und exportiert keinen Track; die Oberfläche kennzeichnet das.
 
 ## [0.1.0] – 2026-10-25
 
@@ -71,6 +113,20 @@ gekennzeichnet; die Grenzen stehen in `README.md` und
   Routing-Design, Datenquellen, Deployment, Entwicklungsumgebung.
 - **GitHub-Community-Dateien**: Issue-Vorlagen für Fehler, Funktionswünsche,
   Datenfehler und Routingprobleme, Pull-Request-Vorlage, Dependabot.
+
+### Behoben
+
+- **Parkplatzsuche bei Überlastung von Overpass.** Der öffentliche Dienst
+  antwortet bei ausgelastetem Backend innerhalb von Sekunden mit HTTP 502/504.
+  Das wurde als „Parkplatzsuche fehlgeschlagen (HTTP 502)“ angezeigt — ohne
+  Hinweis, dass es vorübergehend ist. Jetzt werden 5xx wie Auslastung behandelt:
+  bis zu drei Versuche mit Pause, danach eine Meldung, die zum erneuten Klick
+  auffordert. Verifiziert mit erzwungenem 502 (Meldung nach 4,1 s, Knopf wieder
+  aktiv).
+- **Veraltete Dateien nach einem Deployment.** Der Service Worker lieferte
+  statische Dateien cache-first, sodass zurückkehrende Besucher nach einem
+  Deployment weiter die alte `app.js` bekamen. Jetzt network-first mit
+  Cache-Rückfall für den Offline-Betrieb; Cache-Version auf `v2` erhöht.
 
 ### Bekannte Einschränkungen
 

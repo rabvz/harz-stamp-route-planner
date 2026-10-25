@@ -247,6 +247,19 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+/* One station row: the label selects for the tour, the round button toggles the
+   stamp pass. Two separate controls keep the two meanings apart. */
+.stamp-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.stamp-row--stamped .stamp-item__code {
+  color: var(--green-500);
+}
+
 .stamp-item {
   display: flex;
   align-items: center;
@@ -260,6 +273,61 @@ body {
   text-align: left;
   cursor: pointer;
   color: var(--ink);
+}
+
+.stamp-toggle {
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-right: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stamp-toggle:hover {
+  border-color: var(--green-500);
+  background: var(--green-100);
+}
+
+.stamp-toggle[aria-pressed="true"] {
+  border-color: var(--green-500);
+  background: var(--green-500);
+  color: #fff;
+}
+
+.stamp-toggle:focus-visible {
+  outline: 2px solid var(--green-500);
+  outline-offset: 1px;
+}
+
+.progress {
+  height: 0.6rem;
+  margin: 0.35rem 0 0.6rem;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.progress__bar {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--green-500);
+  transition: width 200ms ease;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.55rem;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
 }
 
 .stamp-item:hover {
@@ -319,6 +387,43 @@ body {
   filter: drop-shadow(0 1px 2px rgb(16 40 26 / 35%));
 }
 
+/* Draggable waypoints of the edited track. */
+.track-handle {
+  background: none;
+  border: 0;
+}
+
+.track-handle__label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: var(--amber-600);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgb(16 40 26 / 45%);
+  cursor: grab;
+}
+
+.track-handle__label:active {
+  cursor: grabbing;
+}
+
+.track-handle__popup p {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+}
+
+.map--adding-point,
+.map--adding-point.leaflet-grab {
+  cursor: crosshair !important;
+}
+
 .summary__label {
   display: block;
   font-size: 0.7rem;
@@ -333,7 +438,66 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.day-list,
+/* Walk order of the day tour. Added waypoints are part of the list, so the
+   consequence of a map edit is visible in text too. */
+.tour-stops {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.tour-stops__item,
+.tour-stops__fixed {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3rem 0.1rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+
+.tour-stops__fixed {
+  grid-template-columns: auto 1fr;
+  color: var(--ink-muted);
+  font-style: italic;
+  font-size: 0.76rem;
+}
+
+.tour-stops__index,
+.tour-stops__code {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--green-700);
+  font-size: 0.74rem;
+}
+
+.tour-stops__label {
+  overflow-wrap: anywhere;
+}
+
+.tour-stops__item--via {
+  background: var(--amber-100);
+}
+
+.link-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--green-700);
+  font: inherit;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--green-900);
+}
+
 .cluster-list {
   list-style: none;
   margin: 0;
@@ -343,7 +507,6 @@ body {
   gap: 0.45rem;
 }
 
-.day-card,
 .cluster-card {
   border: 1px solid var(--line);
   border-left: 4px solid var(--green-500);
@@ -352,12 +515,6 @@ body {
   background: var(--surface);
 }
 
-.day-card--oversized {
-  border-left-color: var(--amber-600);
-  background: var(--amber-100);
-}
-
-.day-card__head,
 .cluster-card__head {
   display: flex;
   justify-content: space-between;
@@ -366,12 +523,53 @@ body {
   font-weight: 600;
 }
 
-.day-card__stamps,
 .cluster-card__stamps {
   margin: 0.3rem 0 0;
   font-size: 0.78rem;
   color: var(--ink-muted);
   line-height: 1.5;
+}
+
+/* Elevation profile: the SVG is generated in web/js/profile.js. */
+.elevation-chart {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  padding: 0.25rem;
+}
+
+.elevation-chart__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.elevation-chart__area {
+  fill: var(--green-100);
+}
+
+.elevation-chart__line {
+  fill: none;
+  stroke: var(--green-700);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.elevation-chart__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.elevation-chart__axis {
+  stroke: var(--ink-muted);
+  stroke-width: 1;
+}
+
+.elevation-chart__label {
+  fill: var(--ink-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .warning {
@@ -489,6 +687,12 @@ body {
 
   .stamp-list {
     max-height: 11rem;
+  }
+
+  /* The engine badge names the routing profile; on a phone the nowrap rule
+     would push the header wider than the viewport. */
+  .badge {
+    white-space: normal;
   }
 }
 

@@ -70,7 +70,7 @@ OpenStreetMap ist.
 | Software | BRouter, MIT-Lizenz (Java, auch selbst betreibbar) |
 | Daten | OpenStreetMap, ODbL 1.0 |
 | Ablage | keine; Antworten nur im Arbeitsspeicher |
-| Aufrufe | eine Anfrage pro Tag, nur beim Berechnen einer Tour |
+| Aufrufe | eine Anfrage pro Tagestour, nur beim Berechnen einer Tour |
 
 Wer den Dienst öffentlich betreibt oder einen eigenen einsetzt, muss die
 ODbL-Attribution sichtbar führen und die Share-Alike-Bedingungen beachten.

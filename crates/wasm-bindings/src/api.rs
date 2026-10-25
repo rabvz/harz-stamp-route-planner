@@ -236,16 +236,10 @@ fn plan(catalog: &StampCatalog, payload: &Value) -> Result<Value, ApiError> {
     };
 
     let options = route_optimizer::OptimizerOptions {
-        max_day_distance_m: payload
-            .get("maxDayDistanceM")
+        max_tour_distance_m: payload
+            .get("maxTourDistanceM")
             .and_then(Value::as_f64)
-            .unwrap_or(route_optimizer::DEFAULT_MAX_DAY_DISTANCE_M),
-        max_days: payload
-            .get("maxDays")
-            .and_then(Value::as_u64)
-            .map_or(route_optimizer::DEFAULT_MAX_DAYS, |value| {
-                usize::try_from(value).unwrap_or(route_optimizer::DEFAULT_MAX_DAYS)
-            }),
+            .unwrap_or(route_optimizer::DEFAULT_MAX_TOUR_DISTANCE_M),
         two_opt_passes: payload
             .get("twoOptPasses")
             .and_then(Value::as_u64)
@@ -268,7 +262,7 @@ fn plan(catalog: &StampCatalog, payload: &Value) -> Result<Value, ApiError> {
         .unwrap_or("straight-line-estimate")
         .to_string();
 
-    let itinerary = route_optimizer::plan(route_optimizer::PlanRequest {
+    let tour = route_optimizer::plan(route_optimizer::PlanRequest {
         start,
         stamps,
         matrix,
@@ -277,7 +271,7 @@ fn plan(catalog: &StampCatalog, payload: &Value) -> Result<Value, ApiError> {
     })
     .map_err(|error| ApiError::new("plan_failed", error.to_string()))?;
 
-    serde_json::to_value(&itinerary).map_err(|error| ApiError::new("internal", error.to_string()))
+    serde_json::to_value(&tour).map_err(|error| ApiError::new("internal", error.to_string()))
 }
 
 fn export_gpx(catalog: &StampCatalog, payload: &Value) -> Result<Value, ApiError> {
@@ -306,21 +300,31 @@ fn export_gpx(catalog: &StampCatalog, payload: &Value) -> Result<Value, ApiError
 
     // Track geometry is only included when the caller supplies real routed
     // geometry. Writing straight lines between stations as a "route" would
-    // produce a file that looks like a hiking trail but is not one.
+    // produce a file that looks like a hiking trail but is not one. Elevation
+    // is optional per point: BRouter returns it, an estimate does not.
     if let Some(track) = payload.get("trackPoints") {
-        let positions: Vec<geo_engine::LatLonRepr> = serde_json::from_value(track.clone())
-            .map_err(|error| {
-                ApiError::new("bad_request", format!("invalid `trackPoints`: {error}"))
-            })?;
-        let mut points = Vec::with_capacity(positions.len());
-        for representation in positions {
-            points.push(
-                LatLon::try_from(representation)
-                    .map_err(|error| ApiError::new("bad_request", error.to_string()))?,
-            );
+        #[derive(Deserialize)]
+        struct RawTrackPoint {
+            lat: f64,
+            lon: f64,
+            #[serde(default)]
+            ele: Option<f64>,
+        }
+
+        let raw: Vec<RawTrackPoint> = serde_json::from_value(track.clone()).map_err(|error| {
+            ApiError::new("bad_request", format!("invalid `trackPoints`: {error}"))
+        })?;
+        let mut points = Vec::with_capacity(raw.len());
+        for point in raw {
+            let position = LatLon::new(point.lat, point.lon)
+                .map_err(|error| ApiError::new("bad_request", error.to_string()))?;
+            points.push(gpx::GpxTrackPoint {
+                position,
+                elevation_m: point.ele.filter(|value| value.is_finite()),
+            });
         }
         if points.len() >= 2 {
-            document.push_segment_from_positions(&points);
+            document.segments.push(gpx::GpxTrackSegment { points });
         }
     }
 
@@ -535,12 +539,16 @@ mod tests {
     }
 
     #[test]
-    fn plan_produces_days_and_totals() {
+    fn plan_produces_one_day_tour_and_totals() {
         let value = call(r#"{"op":"plan","payload":{"stampIds":[1,2,3]}}"#);
         assert_eq!(value["ok"], true, "response: {value}");
-        let days = value["data"]["days"].as_array().expect("days");
-        assert!(!days.is_empty());
-        assert!(value["data"]["totalDistanceM"].as_f64().expect("total") > 0.0);
+        assert!(
+            value["data"]["legs"]
+                .as_array()
+                .is_some_and(|legs| legs.len() >= 4),
+            "a tour needs a leg per station plus the return leg"
+        );
+        assert!(value["data"]["distanceM"].as_f64().expect("total") > 0.0);
         assert_eq!(
             value["data"]["stampsVisited"]
                 .as_array()
@@ -549,6 +557,10 @@ mod tests {
             3
         );
         assert_eq!(value["data"]["estimated"], true);
+        assert!(
+            value["data"].get("days").is_none(),
+            "the wire format must not carry multi-day planning"
+        );
     }
 
     #[test]
@@ -567,23 +579,21 @@ mod tests {
         assert_eq!(value["ok"], true, "response: {value}");
         assert_eq!(value["data"]["providerName"], "test-router");
         assert_eq!(value["data"]["estimated"], false);
-        assert!((value["data"]["totalDistanceM"].as_f64().expect("total") - 2_000.0).abs() < 1e-6);
+        assert!((value["data"]["distanceM"].as_f64().expect("total") - 2_000.0).abs() < 1e-6);
     }
 
     #[test]
     fn warnings_expose_camel_case_fields() {
         // The UI renders these values directly. A snake_case field name would
-        // surface as "–" in the day list, which is how this regression was
+        // surface as "–" in the tour summary, which is how this regression was
         // found; pin the wire format instead of trusting the rename attribute.
-        let value = call(
-            r#"{"op":"plan","payload":{"stampIds":[1,222],"maxDayDistanceM":100,"maxDays":2}}"#,
-        );
+        let value = call(r#"{"op":"plan","payload":{"stampIds":[1,222],"maxTourDistanceM":100}}"#);
         assert_eq!(value["ok"], true, "response: {value}");
         let warnings = value["data"]["warnings"].as_array().expect("warnings");
-        assert!(!warnings.is_empty(), "expected an oversized-day warning");
+        assert!(!warnings.is_empty(), "expected an oversized-tour warning");
 
         let warning = &warnings[0];
-        assert_eq!(warning["kind"], "oversized_day");
+        assert_eq!(warning["kind"], "oversized_tour");
         assert!(
             warning["distanceM"]
                 .as_f64()
@@ -631,10 +641,18 @@ mod tests {
 
         let with = call(
             r#"{"op":"exportGpx","payload":{"stampIds":[1],"trackPoints":[
-                {"lat":51.841649,"lon":10.5799757},{"lat":51.8301677,"lon":10.6027742}]}}"#,
+                {"lat":51.841649,"lon":10.5799757,"ele":612.4},
+                {"lat":51.8301677,"lon":10.6027742}]}}"#,
         );
         assert_eq!(with["ok"], true, "response: {with}");
         assert_eq!(with["data"]["trackPointCount"], 2);
+        // Elevation from the routing service must survive into the GPX track.
+        assert!(
+            with["data"]["gpx"]
+                .as_str()
+                .expect("gpx")
+                .contains("<ele>612.4</ele>")
+        );
     }
 
     #[test]

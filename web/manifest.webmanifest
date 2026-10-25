@@ -1,7 +1,7 @@
 {
   "name": "Harzer Wandernadel Tourenplaner",
   "short_name": "HWN Planer",
-  "description": "Plant Wandertouren zu den Stempelstellen der Harzer Wandernadel: Stempel auswählen, Tage einteilen, GPX exportieren. Berechnung lokal im Browser.",
+  "description": "Plant Tagestouren zu den Stempelstellen der Harzer Wandernadel: Stempel auswählen, Stempelpass führen, Route entlang echter Wege berechnen, GPX exportieren. Berechnung lokal im Browser.",
   "lang": "de",
   "dir": "ltr",
   "start_url": "./",

@@ -43,7 +43,7 @@ pub fn line_matrix(coordinates: &[f64]) -> DistanceMatrix {
 
 /// Synthetic stamps with plausible Harz coordinates, numbered from 1.
 ///
-/// Used where the day builder needs station identities but not real data.
+/// Used where the tour builder needs station identities but not real data.
 pub fn synthetic_stamps(count: usize) -> Vec<Stamp> {
     (1..=count)
         .map(|index| {
